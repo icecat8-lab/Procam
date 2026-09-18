@@ -16,6 +16,10 @@ object ProcamType {
         fontFamily = mono, fontSize = 13.sp,
         fontWeight = FontWeight.Medium, color = ProcamColors.Text
     )
+    val ValueLg = TextStyle(
+        fontFamily = mono, fontSize = 15.sp,
+        fontWeight = FontWeight.Medium, color = ProcamColors.Text
+    )
     val Timecode = TextStyle(
         fontFamily = mono, fontSize = 14.sp,
         fontWeight = FontWeight.Medium, letterSpacing = 1.sp,
