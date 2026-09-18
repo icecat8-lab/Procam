@@ -9,7 +9,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.procam.ui.theme.ProcamColors
 
@@ -19,7 +18,7 @@ fun AudioMeter(
     levelR: Float,
     modifier: Modifier = Modifier,
     width: Int = 100,
-    height: Int = 16
+    height: Int = 14
 ) {
     Row(
         modifier = modifier.width(width.dp).height(height.dp),
