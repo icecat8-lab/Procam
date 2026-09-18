@@ -2,12 +2,13 @@ package com.procam.ui
 
 import android.content.Context
 import android.hardware.camera2.CameraManager
-import android.view.Surface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.procam.camera.ProcamEngine
@@ -16,13 +17,14 @@ import com.procam.ui.theme.ProcamColors
 import kotlin.math.abs
 
 @Composable
-fun CameraScreen() {
+fun CameraScreen(hasPermission: Boolean) {
     val context = LocalContext.current
     var engineState by remember { mutableStateOf(ProcamEngine.State()) }
     val engine = remember {
         ProcamEngine(context) { newState -> engineState = newState }
     }
     var mode by remember { mutableStateOf(CameraMode.VIDEO) }
+    var surfaceReady by remember { mutableStateOf(false) }
 
     val timecode = formatTimecode(engineState.durationMs)
 
@@ -30,12 +32,20 @@ fun CameraScreen() {
     val histG = remember { FloatArray(64) { i -> (1f - abs(i - 30) / 40f).coerceIn(0f, 1f) * 0.85f } }
     val histB = remember { FloatArray(64) { i -> (1f - abs(i - 24) / 40f).coerceIn(0f, 1f) * 0.8f } }
 
+    // Open camera when BOTH permission AND surface are ready
+    LaunchedEffect(hasPermission, surfaceReady) {
+        if (hasPermission && surfaceReady) {
+            val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            engine.open(cm, lastSurface!!)
+        }
+    }
+
     Row(Modifier.fillMaxSize().background(ProcamColors.Bg)) {
         Box(Modifier.weight(1f).fillMaxHeight()) {
             CameraPreview(
                 onSurfaceReady = { holder ->
-                    val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-                    engine.open(cm, holder.surface)
+                    lastSurface = holder.surface
+                    surfaceReady = true
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -75,12 +85,20 @@ fun CameraScreen() {
                 )
             }
 
-            engineState.error?.let { err ->
-                androidx.compose.material3.Text(
-                    text = "⚠ $err",
-                    color = androidx.compose.ui.graphics.Color.Red,
+            if (!hasPermission) {
+                Text(
+                    "⚠ ต้องอนุญาตกล้อง + ไมค์\nกรุณาเปิด permission ใน Settings",
+                    color = Color.Yellow,
                     modifier = Modifier.align(Alignment.Center)
                 )
+            } else {
+                engineState.error?.let { err ->
+                    Text(
+                        text = "⚠ $err",
+                        color = Color.Red,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
             }
         }
 
@@ -108,6 +126,9 @@ fun CameraScreen() {
         onDispose { engine.close() }
     }
 }
+
+// holds the last surface seen
+private var lastSurface: android.view.Surface? = null
 
 private fun formatTimecode(ms: Long): String {
     val totalSec = ms / 1000
