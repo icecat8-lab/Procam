@@ -2,6 +2,7 @@ package com.procam.camera
 
 import android.content.Context
 import android.hardware.camera2.*
+import android.hardware.camera2.params.RggbChannelVector
 import android.media.*
 import android.os.Handler
 import android.os.HandlerThread
@@ -10,7 +11,6 @@ import android.util.Range
 import android.view.Surface
 import java.io.File
 import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 class ProcamEngine(
     private val context: Context,
@@ -40,17 +40,14 @@ class ProcamEngine(
         private const val AUDIO_BITRATE = 192_000
     }
 
-    // Camera
     private var cameraDevice: CameraDevice? = null
     private var session: CameraCaptureSession? = null
     private var previewSurface: Surface? = null
     private var requestBuilder: CaptureRequest.Builder? = null
 
-    // Threads
     private var bgThread: HandlerThread? = null
     private var bgHandler: Handler? = null
 
-    // Encoder
     private var videoEncoder: MediaCodec? = null
     private var videoInputSurface: Surface? = null
     private var audioEncoder: MediaCodec? = null
@@ -64,14 +61,12 @@ class ProcamEngine(
     @Volatile private var audioRecording = false
     private var startTimeMs = 0L
 
-    // Manual state
     private var manualIso: Int = 100
     private var manualShutterNs: Long = 1_000_000_000L / 30
     private var manualWbKelvin: Int = 5500
     private var manualFocus: Float = 0f
     private var manualMode = true
 
-    // ISO range
     private var isoRange: Range<Int> = Range(100, 3200)
     private var shutterRangeNs: Range<Long> = Range(1_000_000L, 500_000_000L)
     private var focusRange: Float = 10f
@@ -164,8 +159,10 @@ class ProcamEngine(
         b.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF)
         b.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX)
         val rggb = colorMatrixForKelvin(manualWbKelvin)
-        b.set(CaptureRequest.COLOR_CORRECTION_GAINS,
-            RggbChannelVector(rggb[0], rggb[1], rggb[2], rggb[3]))
+        b.set(
+            CaptureRequest.COLOR_CORRECTION_GAINS,
+            RggbChannelVector(rggb[0], rggb[1], rggb[2], rggb[3])
+        )
         if (focusRange > 0f) {
             b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
             b.set(CaptureRequest.LENS_FOCUS_DISTANCE, manualFocus.coerceIn(0f, focusRange))
@@ -173,14 +170,16 @@ class ProcamEngine(
     }
 
     private fun colorMatrixForKelvin(kelvin: Int): FloatArray {
-        // Simple approximation
         val k = kelvin / 100f
-        val r: Float; val g: Float; val b: Float
+        val r: Float
+        val g: Float
+        val b: Float
         if (k <= 66) {
             r = 1f
             g = (0.39008157876f * Math.log(k.toDouble()) - 0.63184144378).toFloat().coerceIn(0f, 1f)
             b = if (k <= 19) 0f
-                else (0.543206789110f * Math.log((k - 10).toDouble()) - 1.19625408914).toFloat().coerceIn(0f, 1f)
+            else (0.543206789110f * Math.log((k - 10).toDouble()) - 1.19625408914).toFloat()
+                .coerceIn(0f, 1f)
         } else {
             r = (1.29293618606f * Math.pow(k - 60.0, -0.1332047592)).toFloat().coerceIn(0f, 1f)
             g = (1.12989086089f * Math.pow(k - 60.0, -0.0755148492)).toFloat().coerceIn(0f, 1f)
@@ -193,31 +192,46 @@ class ProcamEngine(
 
     fun setIso(value: Int) {
         manualIso = value
-        requestBuilder?.let { applyManual(it); session?.setRepeatingRequest(it.build(), null, bgHandler) }
+        requestBuilder?.let {
+            applyManual(it)
+            session?.setRepeatingRequest(it.build(), null, bgHandler)
+        }
         emit { copy(iso = value) }
     }
 
     fun setShutter(ns: Long) {
         manualShutterNs = ns
-        requestBuilder?.let { applyManual(it); session?.setRepeatingRequest(it.build(), null, bgHandler) }
+        requestBuilder?.let {
+            applyManual(it)
+            session?.setRepeatingRequest(it.build(), null, bgHandler)
+        }
         emit { copy(shutterNs = ns) }
     }
 
     fun setWb(kelvin: Int) {
         manualWbKelvin = kelvin
-        requestBuilder?.let { applyManual(it); session?.setRepeatingRequest(it.build(), null, bgHandler) }
+        requestBuilder?.let {
+            applyManual(it)
+            session?.setRepeatingRequest(it.build(), null, bgHandler)
+        }
         emit { copy(wbKelvin = kelvin) }
     }
 
     fun setFocus(distance: Float) {
         manualFocus = distance
-        requestBuilder?.let { applyManual(it); session?.setRepeatingRequest(it.build(), null, bgHandler) }
+        requestBuilder?.let {
+            applyManual(it)
+            session?.setRepeatingRequest(it.build(), null, bgHandler)
+        }
         emit { copy(focusDistance = distance) }
     }
 
     fun setManualMode(on: Boolean) {
         manualMode = on
-        requestBuilder?.let { applyManual(it); session?.setRepeatingRequest(it.build(), null, bgHandler) }
+        requestBuilder?.let {
+            applyManual(it)
+            session?.setRepeatingRequest(it.build(), null, bgHandler)
+        }
     }
 
     // ==================== RECORDING ====================
@@ -228,9 +242,13 @@ class ProcamEngine(
         val preview = previewSurface ?: return
 
         try {
-            // Video encoder
-            val videoFormat = MediaFormat.createVideoFormat("video/avc", VIDEO_WIDTH, VIDEO_HEIGHT).apply {
-                setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            val videoFormat = MediaFormat.createVideoFormat(
+                "video/avc", VIDEO_WIDTH, VIDEO_HEIGHT
+            ).apply {
+                setInteger(
+                    MediaFormat.KEY_COLOR_FORMAT,
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
+                )
                 setInteger(MediaFormat.KEY_BIT_RATE, VIDEO_BITRATE)
                 setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL)
@@ -241,9 +259,13 @@ class ProcamEngine(
                 start()
             }
 
-            // Audio encoder
-            val audioFormat = MediaFormat.createAudioFormat("audio/mp4a-latm", AUDIO_SAMPLE_RATE, 2).apply {
-                setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+            val audioFormat = MediaFormat.createAudioFormat(
+                "audio/mp4a-latm", AUDIO_SAMPLE_RATE, 2
+            ).apply {
+                setInteger(
+                    MediaFormat.KEY_AAC_PROFILE,
+                    MediaCodecInfo.CodecProfileLevel.AACObjectLC
+                )
                 setInteger(MediaFormat.KEY_BIT_RATE, AUDIO_BITRATE)
                 setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384)
             }
@@ -252,13 +274,14 @@ class ProcamEngine(
                 start()
             }
 
-            // Muxer
-            muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            muxer = MediaMuxer(
+                outputFile.absolutePath,
+                MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+            )
             videoTrackIndex = -1
             audioTrackIndex = -1
             muxerStarted = false
 
-            // New session with preview + video input
             @Suppress("DEPRECATION")
             device.createCaptureSession(
                 listOf(preview, videoInputSurface!!),
@@ -268,7 +291,10 @@ class ProcamEngine(
                         val rb = device.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
                             addTarget(preview)
                             addTarget(videoInputSurface!!)
-                            set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(FRAME_RATE, FRAME_RATE))
+                            set(
+                                CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                                Range(FRAME_RATE, FRAME_RATE)
+                            )
                             applyManual(this)
                         }
                         try {
@@ -284,6 +310,7 @@ class ProcamEngine(
                             emit { copy(error = t.message) }
                         }
                     }
+
                     override fun onConfigureFailed(s: CameraCaptureSession) {
                         emit { copy(error = "Record session config failed") }
                     }
@@ -297,12 +324,8 @@ class ProcamEngine(
     }
 
     private fun startEncoderThreads() {
-        Thread {
-            drainVideo()
-        }.start()
-        Thread {
-            drainAudio()
-        }.start()
+        Thread { drainVideo() }.start()
+        Thread { drainAudio() }.start()
     }
 
     private fun drainVideo() {
@@ -311,17 +334,16 @@ class ProcamEngine(
         try {
             while (state.isRecording) {
                 val outIdx = enc.dequeueOutputBuffer(bufferInfo, 10_000)
-                when {
-                    outIdx >= 0 -> {
-                        val buf = enc.getOutputBuffer(outIdx)
-                        if (buf != null && bufferInfo.size > 0 &&
-                            (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
-                            buf.position(bufferInfo.offset)
-                            buf.limit(bufferInfo.offset + bufferInfo.size)
-                            writeSampleData(true, buf, bufferInfo)
-                        }
-                        enc.releaseOutputBuffer(outIdx, false)
+                if (outIdx >= 0) {
+                    val buf = enc.getOutputBuffer(outIdx)
+                    if (buf != null && bufferInfo.size > 0 &&
+                        (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0
+                    ) {
+                        buf.position(bufferInfo.offset)
+                        buf.limit(bufferInfo.offset + bufferInfo.size)
+                        writeSampleData(true, buf, bufferInfo)
                     }
+                    enc.releaseOutputBuffer(outIdx, false)
                 }
             }
         } catch (t: Throwable) {
@@ -335,17 +357,16 @@ class ProcamEngine(
         try {
             while (audioRecording) {
                 val outIdx = enc.dequeueOutputBuffer(bufferInfo, 10_000)
-                when {
-                    outIdx >= 0 -> {
-                        val buf = enc.getOutputBuffer(outIdx)
-                        if (buf != null && bufferInfo.size > 0 &&
-                            (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
-                            buf.position(bufferInfo.offset)
-                            buf.limit(bufferInfo.offset + bufferInfo.size)
-                            writeSampleData(false, buf, bufferInfo)
-                        }
-                        enc.releaseOutputBuffer(outIdx, false)
+                if (outIdx >= 0) {
+                    val buf = enc.getOutputBuffer(outIdx)
+                    if (buf != null && bufferInfo.size > 0 &&
+                        (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0
+                    ) {
+                        buf.position(bufferInfo.offset)
+                        buf.limit(bufferInfo.offset + bufferInfo.size)
+                        writeSampleData(false, buf, bufferInfo)
                     }
+                    enc.releaseOutputBuffer(outIdx, false)
                 }
             }
         } catch (t: Throwable) {
@@ -354,7 +375,11 @@ class ProcamEngine(
     }
 
     @Synchronized
-    private fun writeSampleData(isVideo: Boolean, buf: ByteBuffer, info: MediaCodec.BufferInfo) {
+    private fun writeSampleData(
+        isVideo: Boolean,
+        buf: ByteBuffer,
+        info: MediaCodec.BufferInfo
+    ) {
         val mux = muxer ?: return
         if (!muxerStarted) {
             if (videoTrackIndex < 0) {
@@ -395,7 +420,6 @@ class ProcamEngine(
 
         audioThread = Thread {
             val enc = audioEncoder ?: return@Thread
-            val bufferInfo = MediaCodec.BufferInfo()
             val pcm = ByteArray(bufSize)
             while (audioRecording) {
                 val read = record.read(pcm, 0, pcm.size)
@@ -444,7 +468,6 @@ class ProcamEngine(
 
             emit { copy(isRecording = false, lastFile = state.lastFile) }
 
-            // back to preview session
             cameraDevice?.let {
                 session?.close()
                 createSession()
@@ -473,7 +496,8 @@ class ProcamEngine(
             cameraDevice?.close(); cameraDevice = null
             bgThread?.quitSafely(); bgThread = null
             bgHandler = null
-        } catch (_: Throwable) {}
+        } catch (_: Throwable) {
+        }
         emit { copy(isOpen = false) }
     }
 }
