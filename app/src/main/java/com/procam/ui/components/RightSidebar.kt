@@ -27,12 +27,12 @@ enum class CameraMode { VIDEO }
 fun RightSidebar(
     isRecording: Boolean,
     selectedMode: CameraMode,
-    onModeChange: (CameraMode) -> Unit,
     onRecordToggle: () -> Unit,
     onOpenGallery: () -> Unit,
     onOpenMore: () -> Unit,
     onToggleLut: () -> Unit = {},
     onToggleGrid: () -> Unit = {},
+    isGridOn: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -44,27 +44,21 @@ fun RightSidebar(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // TOP: Video mode only
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            IconPill(
-                Icons.Outlined.Videocam, "Video",
-                selected = true
-            ) { onModeChange(CameraMode.VIDEO) }
+            IconPill(Icons.Outlined.Videocam, "Video", true) {}
         }
 
-        // CENTER: Record button
         RecordButton(isRecording, onRecordToggle)
 
-        // BOTTOM: tools
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             IconPill(Icons.Outlined.MonitorHeart, "LUT", false, onToggleLut)
-            IconPill(Icons.Outlined.GridOn, "Grid", false, onToggleGrid)
+            IconPill(Icons.Outlined.GridOn, "Grid", isGridOn, onToggleGrid)
             IconPill(Icons.Outlined.PhotoLibrary, "Media", false, onOpenGallery)
             IconPill(Icons.Outlined.MoreHoriz, "More", false, onOpenMore)
         }
