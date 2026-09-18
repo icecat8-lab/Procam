@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.procam.ui.theme.ProcamColors
 import com.procam.ui.theme.ProcamType
 
-enum class CameraMode { VIDEO, PHOTO }
+enum class CameraMode { VIDEO }
 
 @Composable
 fun RightSidebar(
@@ -44,16 +44,21 @@ fun RightSidebar(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
+        // TOP: Video mode only
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            IconPill(Icons.Outlined.Videocam, "Video",
-                selectedMode == CameraMode.VIDEO) { onModeChange(CameraMode.VIDEO) }
-            IconPill(Icons.Outlined.PhotoCamera, "Photo",
-                selectedMode == CameraMode.PHOTO) { onModeChange(CameraMode.PHOTO) }
+            IconPill(
+                Icons.Outlined.Videocam, "Video",
+                selected = true
+            ) { onModeChange(CameraMode.VIDEO) }
         }
+
+        // CENTER: Record button
         RecordButton(isRecording, onRecordToggle)
+
+        // BOTTOM: tools
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
