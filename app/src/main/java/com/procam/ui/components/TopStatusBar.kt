@@ -17,12 +17,12 @@ import com.procam.ui.theme.ProcamType
 @Composable
 fun TopStatusBar(
     timecode: String,
-    fps: Int,
     shutter: String,
     iris: String,
     iso: Int,
     wb: String,
     resolution: String,
+    isRecording: Boolean,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -32,25 +32,25 @@ fun TopStatusBar(
             .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.Top
     ) {
-        // LEFT: timecode (small) + fps + shutter + iris
         Row(
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalAlignment = Alignment.Top
         ) {
-            // small timecode where LENS used to be
             Column(horizontalAlignment = Alignment.Start) {
                 Text("TIME", style = ProcamType.Label)
                 Spacer(Modifier.height(2.dp))
-                Text(timecode, style = ProcamType.Value, color = ProcamColors.Record)
+                Text(
+                    timecode,
+                    style = ProcamType.Timecode,
+                    color = if (isRecording) ProcamColors.Record else ProcamColors.Text
+                )
             }
-            Stat("FPS", fps.toString())
             Stat("SHUTTER", shutter)
             Stat("IRIS", iris)
         }
 
         Spacer(Modifier.weight(1f))
 
-        // RIGHT: iso + wb + resolution
         Row(
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalAlignment = Alignment.Top
