@@ -1,16 +1,20 @@
 package com.procam.camera
 
+import android.content.ContentValues
 import android.content.Context
 import android.hardware.camera2.*
-import android.hardware.camera2.params.RggbChannelVector
 import android.media.*
+import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.provider.MediaStore
 import android.util.Log
 import android.util.Range
 import android.view.Surface
 import java.io.File
 import java.nio.ByteBuffer
+import kotlin.math.sqrt
 
 class ProcamEngine(
     private val context: Context,
@@ -23,7 +27,10 @@ class ProcamEngine(
         val shutterNs: Long = 0L,
         val wbKelvin: Int = 0,
         val durationMs: Long = 0L,
+        val audioLevelL: Float = 0f,
+        val audioLevelR: Float = 0f,
         val lastFile: String? = null,
+        val lastUri: Uri? = null,
         val error: String? = null
     )
 
@@ -59,8 +66,8 @@ class ProcamEngine(
     private var audioThread: Thread? = null
     @Volatile private var audioRecording = false
     private var startTimeMs = 0L
+    private var currentOutputFile: File? = null
 
-    // AUTO MODE by default so preview works
     private var manualMode = false
 
     private var state = State()
@@ -88,14 +95,10 @@ class ProcamEngine(
 
     private fun gainsToKelvin(r: Float, g: Float, b: Float): Int {
         if (r <= 0f || b <= 0f) return 0
-        // rough mapping r/b ratio → Kelvin
         val ratio = (r / b).coerceIn(0.3f, 4f)
-        // ratio ~3 → 2000K, ratio ~0.5 → 10000K
         val k = (2000 + (3f - ratio) / 2.5f * 8000f).toInt()
         return k.coerceIn(2000, 10000)
     }
-
-    // ==================== LIFECYCLE ====================
 
     fun open(cameraManager: CameraManager, surface: Surface) {
         if (cameraDevice != null) return
@@ -169,20 +172,12 @@ class ProcamEngine(
         }
     }
 
-    fun setManualMode(on: Boolean) {
-        manualMode = on
-        requestBuilder?.let {
-            applyModes(it)
-            session?.setRepeatingRequest(it.build(), captureCallback, bgHandler)
-        }
-    }
-
-    // ==================== RECORDING ====================
-
     fun startRecording(outputFile: File) {
         if (state.isRecording) return
         val device = cameraDevice ?: return
         val preview = previewSurface ?: return
+
+        currentOutputFile = outputFile
 
         try {
             val videoFormat = MediaFormat.createVideoFormat(
@@ -367,6 +362,27 @@ class ProcamEngine(
             while (audioRecording) {
                 val read = record.read(pcm, 0, pcm.size)
                 if (read <= 0) continue
+
+                var sumL = 0.0
+                var sumR = 0.0
+                var count = 0
+                var i = 0
+                while (i + 3 < read) {
+                    val l = ((pcm[i + 1].toInt() shl 8) or (pcm[i].toInt() and 0xFF)).toShort()
+                    val r = ((pcm[i + 3].toInt() shl 8) or (pcm[i + 2].toInt() and 0xFF)).toShort()
+                    sumL += l.toDouble() * l
+                    sumR += r.toDouble() * r
+                    count++
+                    i += 4
+                }
+                if (count > 0) {
+                    val rmsL = sqrt(sumL / count).toFloat() / 32768f
+                    val rmsR = sqrt(sumR / count).toFloat() / 32768f
+                    val dbL = (20 * kotlin.math.log10(rmsL.coerceAtLeast(1e-6f)) + 60) / 60
+                    val dbR = (20 * kotlin.math.log10(rmsR.coerceAtLeast(1e-6f)) + 60) / 60
+                    emit { copy(audioLevelL = dbL.coerceIn(0f, 1f), audioLevelR = dbR.coerceIn(0f, 1f)) }
+                }
+
                 val inIdx = enc.dequeueInputBuffer(10_000)
                 if (inIdx >= 0) {
                     val inBuf = enc.getInputBuffer(inIdx) ?: continue
@@ -409,8 +425,10 @@ class ProcamEngine(
             videoInputSurface?.release()
             videoInputSurface = null
 
-            // reset timer immediately
-            emit { copy(isRecording = false, durationMs = 0L, lastFile = state.lastFile) }
+            currentOutputFile?.let { file ->
+                val uri = addToGallery(file)
+                emit { copy(isRecording = false, durationMs = 0L, audioLevelL = 0f, audioLevelR = 0f, lastFile = file.absolutePath, lastUri = uri) }
+            } ?: emit { copy(isRecording = false, durationMs = 0L, audioLevelL = 0f, audioLevelR = 0f) }
 
             cameraDevice?.let {
                 session?.close()
@@ -418,6 +436,34 @@ class ProcamEngine(
             }
         } catch (t: Throwable) {
             Log.e(TAG, "stopRecording", t)
+        }
+    }
+
+    private fun addToGallery(file: File): Uri? {
+        return try {
+            val values = ContentValues().apply {
+                put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
+                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/Procam")
+                    put(MediaStore.Video.Media.IS_PENDING, 1)
+                }
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: return null
+            resolver.openOutputStream(uri)?.use { out ->
+                file.inputStream().use { input -> input.copyTo(out) }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear()
+                values.put(MediaStore.Video.Media.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            }
+            file.delete()
+            uri
+        } catch (t: Throwable) {
+            Log.e(TAG, "addToGallery failed", t)
+            null
         }
     }
 
