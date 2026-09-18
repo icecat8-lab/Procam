@@ -1,7 +1,9 @@
 package com.procam.ui
 
 import android.content.Context
+import android.content.Intent
 import android.hardware.camera2.CameraManager
+import android.net.Uri
 import android.view.Surface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -15,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import com.procam.camera.ProcamEngine
 import com.procam.ui.components.*
 import com.procam.ui.theme.ProcamColors
-import kotlin.math.abs
 
 @Composable
 fun CameraScreen(hasPermission: Boolean) {
@@ -27,18 +28,21 @@ fun CameraScreen(hasPermission: Boolean) {
     var mode by remember { mutableStateOf(CameraMode.VIDEO) }
     var surfaceReady by remember { mutableStateOf(false) }
     var lastSurface by remember { mutableStateOf<Surface?>(null) }
+    var isGridOn by remember { mutableStateOf(false) }
+    var showMore by remember { mutableStateOf(false) }
 
     val timecode = formatTimecode(engineState.durationMs, engineState.isRecording)
-
-    val histR = remember { FloatArray(64) { i -> (1f - abs(i - 20) / 40f).coerceIn(0f, 1f) * 0.9f } }
-    val histG = remember { FloatArray(64) { i -> (1f - abs(i - 30) / 40f).coerceIn(0f, 1f) * 0.85f } }
-    val histB = remember { FloatArray(64) { i -> (1f - abs(i - 24) / 40f).coerceIn(0f, 1f) * 0.8f } }
 
     LaunchedEffect(hasPermission, surfaceReady) {
         if (hasPermission && surfaceReady && lastSurface != null) {
             val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
             engine.open(cm, lastSurface!!)
         }
+    }
+
+    if (showMore) {
+        MoreScreen(onBack = { showMore = false })
+        return
     }
 
     Row(Modifier.fillMaxSize().background(ProcamColors.Bg)) {
@@ -51,41 +55,34 @@ fun CameraScreen(hasPermission: Boolean) {
                 modifier = Modifier.fillMaxSize()
             )
 
+            GridOverlay(showGrid = isGridOn, modifier = Modifier.fillMaxSize())
+
             TopStatusBar(
                 timecode = timecode,
-                fps = 30,
                 shutter = formatShutter(engineState.shutterNs),
                 iris = "f1.8",
                 iso = engineState.iso,
                 wb = if (engineState.wbKelvin > 0) "${engineState.wbKelvin}K" else "AUTO",
                 resolution = "1080p",
+                isRecording = engineState.isRecording,
                 modifier = Modifier.align(Alignment.TopStart)
             )
 
-            Row(
-                Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Histogram(histR, histG, histB, width = 200, height = 56)
-                RecordingInfo(
-                    remainingTime = "05:37",
-                    storageUsedPct = 1,
-                    storageFree = "2GB",
-                    batteryPct = 87
-                )
+            if (engineState.isRecording) {
                 AudioMeter(
-                    levelL = if (engineState.isRecording) 0.62f else 0f,
-                    levelR = if (engineState.isRecording) 0.58f else 0f,
-                    peakL = if (engineState.isRecording) 0.78f else 0f,
-                    peakR = if (engineState.isRecording) 0.74f else 0f,
-                    width = 200, height = 44
+                    levelL = engineState.audioLevelL,
+                    levelR = engineState.audioLevelR,
+                    width = 100,
+                    height = 16,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 24.dp)
                 )
             }
 
             if (!hasPermission) {
                 Text(
-                    "⚠ ต้องอนุญาตกล้อง + ไมค์",
+                    "需要กล้องและไมค์",
                     color = Color.Yellow,
                     modifier = Modifier.align(Alignment.Center)
                 )
@@ -103,7 +100,6 @@ fun CameraScreen(hasPermission: Boolean) {
         RightSidebar(
             isRecording = engineState.isRecording,
             selectedMode = mode,
-            onModeChange = { mode = it },
             onRecordToggle = {
                 if (engineState.isRecording) {
                     engine.stopRecording()
@@ -113,10 +109,16 @@ fun CameraScreen(hasPermission: Boolean) {
                     engine.startRecording(file)
                 }
             },
-            onOpenGallery = { },
-            onOpenMore = { },
-            onToggleLut = { },
-            onToggleGrid = { }
+            onOpenGallery = {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    type = "video/*"
+                }
+                runCatching { context.startActivity(intent) }
+            },
+            onOpenMore = { showMore = true },
+            onToggleLut = {},
+            onToggleGrid = { isGridOn = !isGridOn },
+            isGridOn = isGridOn
         )
     }
 
@@ -125,7 +127,6 @@ fun CameraScreen(hasPermission: Boolean) {
     }
 }
 
-// Format: MM:SS when recording, "00:00" when idle
 private fun formatTimecode(ms: Long, isRecording: Boolean): String {
     if (!isRecording && ms == 0L) return "00:00"
     val totalSec = ms / 1000
