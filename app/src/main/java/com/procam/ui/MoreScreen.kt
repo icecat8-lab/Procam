@@ -24,6 +24,7 @@ fun MoreScreen(
     onBack: () -> Unit,
     onResolutionClick: () -> Unit,
     onFpsClick: () -> Unit,
+    onCodecClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -63,8 +64,12 @@ fun MoreScreen(
             value = "${settings.fps}",
             onClick = onFpsClick
         )
+        ClickRow(
+            label = "Codec",
+            value = settings.codecLabel,
+            onClick = onCodecClick
+        )
         InfoRow(label = "Bitrate", value = "${settings.bitrate / 1_000_000} Mbps")
-        InfoRow(label = "Codec", value = settings.codecLabel)
 
         Spacer(Modifier.height(32.dp))
 
@@ -104,7 +109,7 @@ fun MoreScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        Text("Procam v0.2.0", color = ProcamColors.TextMuted, fontSize = 12.sp)
+        Text("Procam v0.2.1", color = ProcamColors.TextMuted, fontSize = 12.sp)
     }
 }
 
@@ -138,10 +143,10 @@ private fun InfoRow(label: String, value: String) {
 @Composable
 fun SelectScreen(
     title: String,
-    options: List<Pair<String, VideoSettings>>,
-    current: VideoSettings,
+    options: List<SelectOption>,
+    currentMatch: (SelectOption) -> Boolean,
     onBack: () -> Unit,
-    onSelect: (VideoSettings) -> Unit,
+    onSelect: (SelectOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -170,21 +175,17 @@ fun SelectScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        options.forEach { (label, setting) ->
-            val selected = when (title) {
-                "Resolution" -> setting.width == current.width && setting.height == current.height
-                "FPS" -> setting.fps == current.fps
-                else -> false
-            }
+        options.forEach { option ->
+            val selected = currentMatch(option)
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable { onSelect(setting) }
+                    .clickable { onSelect(option) }
                     .padding(vertical = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    label,
+                    option.label,
                     color = if (selected) ProcamColors.Accent else ProcamColors.Text,
                     fontSize = 15.sp,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
@@ -196,3 +197,8 @@ fun SelectScreen(
         }
     }
 }
+
+data class SelectOption(
+    val label: String,
+    val settings: VideoSettings
+)
