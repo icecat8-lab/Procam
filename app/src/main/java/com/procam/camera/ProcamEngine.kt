@@ -8,12 +8,13 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.util.Log
 import android.util.Range
 import android.view.Surface
-import java.io.File
 import java.nio.ByteBuffer
+import kotlin.math.ln
 import kotlin.math.sqrt
 
 data class VideoSettings(
@@ -22,8 +23,7 @@ data class VideoSettings(
     val fps: Int = 30,
     val bitrate: Int = 20_000_000,
     val codec: String = "video/avc",
-    val codecLabel: String = "H.264",
-    val label: String = "1080p 30"
+    val codecLabel: String = "H.264"
 )
 
 class ProcamEngine(
@@ -39,7 +39,6 @@ class ProcamEngine(
         val durationMs: Long = 0L,
         val audioLevelL: Float = 0f,
         val audioLevelR: Float = 0f,
-        val lastFile: String? = null,
         val lastUri: Uri? = null,
         val error: String? = null
     )
@@ -64,6 +63,8 @@ class ProcamEngine(
     private var audioEncoder: MediaCodec? = null
     private var audioRecord: AudioRecord? = null
     private var muxer: MediaMuxer? = null
+    private var pfd: ParcelFileDescriptor? = null
+    private var outputUri: Uri? = null
     private var videoTrackIndex = -1
     private var audioTrackIndex = -1
     private var muxerStarted = false
@@ -71,9 +72,6 @@ class ProcamEngine(
     private var audioThread: Thread? = null
     @Volatile private var audioRecording = false
     private var startTimeMs = 0L
-    private var currentOutputFile: File? = null
-
-    private var activeSettings = VideoSettings()
 
     private var state = State()
     private fun emit(patch: State.() -> State) {
@@ -90,7 +88,10 @@ class ProcamEngine(
             val iso = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: 0
             val shutter = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
             val gains = result.get(CaptureResult.COLOR_CORRECTION_GAINS)
-            val kelvin = gains?.let { gainsToKelvin(it.red, it.greenEven, it.blue) } ?: 0
+            val kelvin = if (gains != null) {
+                gainsToKelvin(gains.red, (gains.greenEven + gains.greenOdd) / 2f, gains.blue)
+            } else 0
+
             if (iso != state.iso || shutter != state.shutterNs || kelvin != state.wbKelvin) {
                 emit { copy(iso = iso, shutterNs = shutter, wbKelvin = kelvin) }
             }
@@ -98,10 +99,16 @@ class ProcamEngine(
     }
 
     private fun gainsToKelvin(r: Float, g: Float, b: Float): Int {
-        if (r <= 0f || b <= 0f) return 0
-        val ratio = (r / b).coerceIn(0.3f, 4f)
-        val k = (2000 + (3f - ratio) / 2.5f * 8000f).toInt()
-        return k.coerceIn(2000, 10000)
+        if (r <= 0.001f || b <= 0.001f || g <= 0.001f) return 0
+        val rb = r / b
+        if (rb <= 0.001f) return 0
+        val logRb = ln(rb.toDouble())
+        val kelvin = 6490.0 * Math.pow(logRb, 3.0) -
+            3_520_000.0 * Math.pow(logRb, 2.0) +
+            6_824_000.0 * logRb +
+            5_663_000.0
+        val normalized = (kelvin / 100.0).toInt() * 100
+        return normalized.coerceIn(2000, 12000)
     }
 
     private fun ensureThread() {
@@ -186,17 +193,38 @@ class ProcamEngine(
         }
     }
 
-    fun startRecording(outputFile: File, settings: VideoSettings) {
+    fun startRecording(settings: VideoSettings) {
         if (state.isRecording) return
         val device = cameraDevice ?: return
         val preview = previewSurface ?: return
 
-        activeSettings = settings
-        currentOutputFile = outputFile
-
-        outputFile.parentFile?.mkdirs()
-
         try {
+            val resolver = context.contentResolver
+            val displayName = "PROCAM_${System.currentTimeMillis()}.mp4"
+            val values = ContentValues().apply {
+                put(MediaStore.Video.Media.DISPLAY_NAME, displayName)
+                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/Procam")
+                    put(MediaStore.Video.Media.IS_PENDING, 1)
+                }
+            }
+            val uri = resolver.insert(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                values
+            ) ?: run {
+                emit { copy(error = "MediaStore insert failed") }
+                return
+            }
+            val descriptor = resolver.openFileDescriptor(uri, "w") ?: run {
+                resolver.delete(uri, null, null)
+                emit { copy(error = "FileDescriptor open failed") }
+                return
+            }
+
+            outputUri = uri
+            pfd = descriptor
+
             val videoFormat = MediaFormat.createVideoFormat(
                 settings.codec, settings.width, settings.height
             ).apply {
@@ -230,7 +258,7 @@ class ProcamEngine(
             }
 
             muxer = MediaMuxer(
-                outputFile.absolutePath,
+                descriptor.fileDescriptor,
                 MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
             )
             videoTrackIndex = -1
@@ -263,6 +291,7 @@ class ProcamEngine(
                             emit { copy(isRecording = true, durationMs = 0L, error = null) }
                             startTimer()
                         } catch (t: Throwable) {
+                            Log.e(TAG, "start repeating failed", t)
                             emit { copy(error = t.message) }
                         }
                     }
@@ -275,6 +304,7 @@ class ProcamEngine(
             )
         } catch (t: Throwable) {
             Log.e(TAG, "startRecording failed", t)
+            cleanupRecording()
             emit { copy(error = t.message) }
         }
     }
@@ -419,9 +449,11 @@ class ProcamEngine(
 
     fun stopRecording() {
         if (!state.isRecording) return
+        val uri = outputUri
         try {
             audioRecording = false
             audioThread?.join(500)
+            audioThread = null
             audioRecord?.stop()
             audioRecord?.release()
             audioRecord = null
@@ -430,15 +462,17 @@ class ProcamEngine(
 
             val ve = videoEncoder
             videoEncoder = null
-            ve?.stop()
+            try { ve?.stop() } catch (_: Throwable) {}
             ve?.release()
 
             val ae = audioEncoder
             audioEncoder = null
-            ae?.stop()
+            try { ae?.stop() } catch (_: Throwable) {}
             ae?.release()
 
-            if (muxerStarted) muxer?.stop()
+            try {
+                if (muxerStarted) muxer?.stop()
+            } catch (_: Throwable) {}
             muxer?.release()
             muxer = null
             muxerStarted = false
@@ -448,18 +482,28 @@ class ProcamEngine(
             videoInputSurface?.release()
             videoInputSurface = null
 
-            val savedUri = currentOutputFile?.let { file -> addToGallery(file) }
+            try { pfd?.close() } catch (_: Throwable) {}
+            pfd = null
+
+            if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                try {
+                    val values = ContentValues().apply {
+                        put(MediaStore.Video.Media.IS_PENDING, 0)
+                    }
+                    context.contentResolver.update(uri, values, null, null)
+                } catch (_: Throwable) {}
+            }
+
             emit {
                 copy(
                     isRecording = false,
                     durationMs = 0L,
                     audioLevelL = 0f,
                     audioLevelR = 0f,
-                    lastFile = currentOutputFile?.absolutePath,
-                    lastUri = savedUri
+                    lastUri = uri
                 )
             }
-            currentOutputFile = null
+            outputUri = null
 
             cameraDevice?.let {
                 try { session?.close() } catch (_: Throwable) {}
@@ -468,37 +512,34 @@ class ProcamEngine(
             }
         } catch (t: Throwable) {
             Log.e(TAG, "stopRecording", t)
+            if (uri != null) {
+                try { context.contentResolver.delete(uri, null, null) } catch (_: Throwable) {}
+            }
+            cleanupRecording()
+            emit { copy(isRecording = false, durationMs = 0L) }
         }
     }
 
-    private fun addToGallery(file: File): Uri? {
-        return try {
-            if (!file.exists()) return null
-            val values = ContentValues().apply {
-                put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
-                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/Procam")
-                    put(MediaStore.Video.Media.IS_PENDING, 1)
-                }
-            }
-            val resolver = context.contentResolver
-            val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
-                ?: return null
-            resolver.openOutputStream(uri)?.use { out ->
-                file.inputStream().use { input -> input.copyTo(out) }
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                values.clear()
-                values.put(MediaStore.Video.Media.IS_PENDING, 0)
-                resolver.update(uri, values, null, null)
-            }
-            file.delete()
-            uri
-        } catch (t: Throwable) {
-            Log.e(TAG, "addToGallery failed", t)
-            null
-        }
+    private fun cleanupRecording() {
+        try { audioRecording = false } catch (_: Throwable) {}
+        try { audioRecord?.stop() } catch (_: Throwable) {}
+        try { audioRecord?.release() } catch (_: Throwable) {}
+        audioRecord = null
+        try { videoEncoder?.stop() } catch (_: Throwable) {}
+        try { videoEncoder?.release() } catch (_: Throwable) {}
+        videoEncoder = null
+        try { audioEncoder?.stop() } catch (_: Throwable) {}
+        try { audioEncoder?.release() } catch (_: Throwable) {}
+        audioEncoder = null
+        try { muxer?.release() } catch (_: Throwable) {}
+        muxer = null
+        try { pfd?.close() } catch (_: Throwable) {}
+        pfd = null
+        try { videoInputSurface?.release() } catch (_: Throwable) {}
+        videoInputSurface = null
+        muxerStarted = false
+        videoTrackIndex = -1
+        audioTrackIndex = -1
     }
 
     private fun startTimer() {
