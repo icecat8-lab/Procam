@@ -13,6 +13,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 @Composable
 fun CameraPreview(
     onSurfaceReady: (SurfaceHolder) -> Unit,
+    onSurfaceDestroyed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(modifier.background(Color.Black)) {
@@ -22,7 +23,9 @@ fun CameraPreview(
                     holder.addCallback(object : SurfaceHolder.Callback {
                         override fun surfaceCreated(h: SurfaceHolder) = onSurfaceReady(h)
                         override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, hh: Int) {}
-                        override fun surfaceDestroyed(h: SurfaceHolder) {}
+                        override fun surfaceDestroyed(h: SurfaceHolder) {
+                            onSurfaceDestroyed()
+                        }
                     })
                 }
             },
