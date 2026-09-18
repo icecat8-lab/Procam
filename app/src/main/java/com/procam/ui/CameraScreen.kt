@@ -3,8 +3,6 @@ package com.procam.ui
 import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraManager
-import android.net.Uri
-import android.view.Surface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
@@ -15,8 +13,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.procam.camera.ProcamEngine
+import com.procam.camera.VideoSettings
 import com.procam.ui.components.*
 import com.procam.ui.theme.ProcamColors
+
+private sealed class Screen {
+    object Camera : Screen()
+    object More : Screen()
+    object Resolution : Screen()
+    object Fps : Screen()
+}
 
 @Composable
 fun CameraScreen(hasPermission: Boolean) {
@@ -25,33 +31,81 @@ fun CameraScreen(hasPermission: Boolean) {
     val engine = remember {
         ProcamEngine(context) { newState -> engineState = newState }
     }
-    var mode by remember { mutableStateOf(CameraMode.VIDEO) }
-    var surfaceReady by remember { mutableStateOf(false) }
-    var lastSurface by remember { mutableStateOf<Surface?>(null) }
+    var screen by remember { mutableStateOf<Screen>(Screen.Camera) }
+    var settings by remember { mutableStateOf(VideoSettings()) }
     var isGridOn by remember { mutableStateOf(false) }
-    var showMore by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        onDispose { engine.close() }
+    }
+
+    when (screen) {
+        Screen.More -> {
+            MoreScreen(
+                settings = settings,
+                onBack = { screen = Screen.Camera },
+                onResolutionClick = { screen = Screen.Resolution },
+                onFpsClick = { screen = Screen.Fps }
+            )
+            return
+        }
+        Screen.Resolution -> {
+            val options = listOf(
+                "3840×2160 (4K)" to VideoSettings(3840, 2160, 30, 50_000_000, "video/avc", "H.264", "4K 30"),
+                "1920×1080 (FHD)" to VideoSettings(1920, 1080, 30, 20_000_000, "video/avc", "H.264", "1080p 30"),
+                "1280×720 (HD)" to VideoSettings(1280, 720, 30, 10_000_000, "video/avc", "H.264", "720p 30")
+            )
+            SelectScreen(
+                title = "Resolution",
+                options = options,
+                current = settings,
+                onBack = { screen = Screen.More },
+                onSelect = { selected ->
+                    settings = settings.copy(
+                        width = selected.width,
+                        height = selected.height,
+                        bitrate = selected.bitrate,
+                        label = selected.label
+                    )
+                    screen = Screen.More
+                }
+            )
+            return
+        }
+        Screen.Fps -> {
+            val options = listOf(
+                "30 fps" to VideoSettings(settings.width, settings.height, 30, settings.bitrate, "video/avc", "H.264", settings.label),
+                "60 fps" to VideoSettings(settings.width, settings.height, 60, settings.bitrate * 2, "video/avc", "H.264", settings.label)
+            )
+            SelectScreen(
+                title = "FPS",
+                options = options,
+                current = settings,
+                onBack = { screen = Screen.More },
+                onSelect = { selected ->
+                    settings = settings.copy(fps = selected.fps, bitrate = selected.bitrate)
+                    screen = Screen.More
+                }
+            )
+            return
+        }
+        Screen.Camera -> {}
+    }
 
     val timecode = formatTimecode(engineState.durationMs, engineState.isRecording)
-
-    LaunchedEffect(hasPermission, surfaceReady) {
-        if (hasPermission && surfaceReady && lastSurface != null) {
-            val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-            engine.open(cm, lastSurface!!)
-        }
-    }
-
-    if (showMore) {
-        MoreScreen(onBack = { showMore = false })
-        return
-    }
 
     Row(Modifier.fillMaxSize().background(ProcamColors.Bg)) {
         Box(Modifier.weight(1f).fillMaxHeight()) {
             CameraPreview(
                 onSurfaceReady = { holder ->
-                    lastSurface = holder.surface
-                    surfaceReady = true
+                    val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                    if (engineState.isOpen) {
+                        engine.attachSurface(holder.surface)
+                    } else {
+                        engine.open(cm, holder.surface)
+                    }
                 },
+                onSurfaceDestroyed = { engine.detachSurface() },
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -63,7 +117,7 @@ fun CameraScreen(hasPermission: Boolean) {
                 iris = "f1.8",
                 iso = engineState.iso,
                 wb = if (engineState.wbKelvin > 0) "${engineState.wbKelvin}K" else "AUTO",
-                resolution = "1080p",
+                resolution = "${settings.width}×${settings.height}",
                 isRecording = engineState.isRecording,
                 modifier = Modifier.align(Alignment.TopStart)
             )
@@ -73,7 +127,7 @@ fun CameraScreen(hasPermission: Boolean) {
                     levelL = engineState.audioLevelL,
                     levelR = engineState.audioLevelR,
                     width = 100,
-                    height = 16,
+                    height = 14,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 24.dp)
@@ -99,31 +153,23 @@ fun CameraScreen(hasPermission: Boolean) {
 
         RightSidebar(
             isRecording = engineState.isRecording,
-            selectedMode = mode,
             onRecordToggle = {
                 if (engineState.isRecording) {
                     engine.stopRecording()
                 } else {
                     val dir = context.getExternalFilesDir(null) ?: context.filesDir
                     val file = java.io.File(dir, "PROCAM_${System.currentTimeMillis()}.mp4")
-                    engine.startRecording(file)
+                    engine.startRecording(file, settings)
                 }
             },
             onOpenGallery = {
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    type = "video/*"
-                }
+                val intent = Intent(Intent.ACTION_VIEW).apply { type = "video/*" }
                 runCatching { context.startActivity(intent) }
             },
-            onOpenMore = { showMore = true },
-            onToggleLut = {},
+            onOpenMore = { screen = Screen.More },
             onToggleGrid = { isGridOn = !isGridOn },
             isGridOn = isGridOn
         )
-    }
-
-    DisposableEffect(Unit) {
-        onDispose { engine.close() }
     }
 }
 
