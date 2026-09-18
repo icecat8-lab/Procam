@@ -15,12 +15,12 @@ import com.procam.ui.CameraScreen
 
 class MainActivity : ComponentActivity() {
 
-    private val hasCameraPermission = mutableStateOf(false)
+    private val hasPermission = mutableStateOf(false)
 
-    private val permissions = registerForActivityResult(
+    private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
-        hasCameraPermission.value = result[Manifest.permission.CAMERA] == true &&
+        hasPermission.value = result[Manifest.permission.CAMERA] == true &&
             result[Manifest.permission.RECORD_AUDIO] == true
     }
 
@@ -34,7 +34,6 @@ class MainActivity : ComponentActivity() {
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
 
-        // Check existing permission
         val camGranted = ContextCompat.checkSelfPermission(
             this, Manifest.permission.CAMERA
         ) == PackageManager.PERMISSION_GRANTED
@@ -43,16 +42,16 @@ class MainActivity : ComponentActivity() {
         ) == PackageManager.PERMISSION_GRANTED
 
         if (camGranted && micGranted) {
-            hasCameraPermission.value = true
+            hasPermission.value = true
         } else {
-            permissions.launch(arrayOf(
+            permissionLauncher.launch(arrayOf(
                 Manifest.permission.CAMERA,
                 Manifest.permission.RECORD_AUDIO
             ))
         }
 
         setContent {
-            CameraScreen(hasPermission = hasCameraPermission.value)
+            CameraScreen(hasPermission = hasPermission.value)
         }
     }
 }
