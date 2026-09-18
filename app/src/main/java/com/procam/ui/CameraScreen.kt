@@ -2,6 +2,7 @@ package com.procam.ui
 
 import android.content.Context
 import android.hardware.camera2.CameraManager
+import android.view.Surface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
@@ -25,16 +26,16 @@ fun CameraScreen(hasPermission: Boolean) {
     }
     var mode by remember { mutableStateOf(CameraMode.VIDEO) }
     var surfaceReady by remember { mutableStateOf(false) }
+    var lastSurface by remember { mutableStateOf<Surface?>(null) }
 
-    val timecode = formatTimecode(engineState.durationMs)
+    val timecode = formatTimecode(engineState.durationMs, engineState.isRecording)
 
     val histR = remember { FloatArray(64) { i -> (1f - abs(i - 20) / 40f).coerceIn(0f, 1f) * 0.9f } }
     val histG = remember { FloatArray(64) { i -> (1f - abs(i - 30) / 40f).coerceIn(0f, 1f) * 0.85f } }
     val histB = remember { FloatArray(64) { i -> (1f - abs(i - 24) / 40f).coerceIn(0f, 1f) * 0.8f } }
 
-    // Open camera when BOTH permission AND surface are ready
     LaunchedEffect(hasPermission, surfaceReady) {
-        if (hasPermission && surfaceReady) {
+        if (hasPermission && surfaceReady && lastSurface != null) {
             val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
             engine.open(cm, lastSurface!!)
         }
@@ -51,16 +52,13 @@ fun CameraScreen(hasPermission: Boolean) {
             )
 
             TopStatusBar(
-                lens = "26mm",
+                timecode = timecode,
                 fps = 30,
                 shutter = formatShutter(engineState.shutterNs),
                 iris = "f1.8",
-                timecode = timecode,
                 iso = engineState.iso,
-                wb = engineState.wbKelvin,
-                tint = 0,
+                wb = if (engineState.wbKelvin > 0) "${engineState.wbKelvin}K" else "AUTO",
                 resolution = "1080p",
-                wbAuto = false,
                 modifier = Modifier.align(Alignment.TopStart)
             )
 
@@ -87,7 +85,7 @@ fun CameraScreen(hasPermission: Boolean) {
 
             if (!hasPermission) {
                 Text(
-                    "⚠ ต้องอนุญาตกล้อง + ไมค์\nกรุณาเปิด permission ใน Settings",
+                    "⚠ ต้องอนุญาตกล้อง + ไมค์",
                     color = Color.Yellow,
                     modifier = Modifier.align(Alignment.Center)
                 )
@@ -127,20 +125,17 @@ fun CameraScreen(hasPermission: Boolean) {
     }
 }
 
-// holds the last surface seen
-private var lastSurface: android.view.Surface? = null
-
-private fun formatTimecode(ms: Long): String {
+// Format: MM:SS when recording, "00:00" when idle
+private fun formatTimecode(ms: Long, isRecording: Boolean): String {
+    if (!isRecording && ms == 0L) return "00:00"
     val totalSec = ms / 1000
-    val h = totalSec / 3600
-    val m = (totalSec / 60) % 60
+    val m = totalSec / 60
     val s = totalSec % 60
-    val f = ((ms % 1000) * 30 / 1000).toInt()
-    return "%02d:%02d:%02d:%02d".format(h, m, s, f)
+    return "%02d:%02d".format(m, s)
 }
 
 private fun formatShutter(ns: Long): String {
-    if (ns <= 0) return "1/30"
+    if (ns <= 0) return "AUTO"
     val denom = (1_000_000_000.0 / ns).toInt()
     return "1/$denom"
 }
