@@ -16,10 +16,13 @@ import com.procam.ui.theme.ProcamType
 
 @Composable
 fun TopStatusBar(
-    lens: String, fps: Int, shutter: String, iris: String,
-    timecode: String, iso: Int, wb: Int, tint: Int,
+    timecode: String,
+    fps: Int,
+    shutter: String,
+    iris: String,
+    iso: Int,
+    wb: String,
     resolution: String,
-    wbAuto: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -29,45 +32,45 @@ fun TopStatusBar(
             .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.Top
     ) {
+        // LEFT: timecode (small) + fps + shutter + iris
         Row(
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalAlignment = Alignment.Top
         ) {
-            Stat("LENS", lens)
+            // small timecode where LENS used to be
+            Column(horizontalAlignment = Alignment.Start) {
+                Text("TIME", style = ProcamType.Label)
+                Spacer(Modifier.height(2.dp))
+                Text(timecode, style = ProcamType.Value, color = ProcamColors.Record)
+            }
             Stat("FPS", fps.toString())
             Stat("SHUTTER", shutter)
             Stat("IRIS", iris)
         }
 
         Spacer(Modifier.weight(1f))
-        TimecodeText(text = timecode, modifier = Modifier.padding(top = 2.dp))
-        Spacer(Modifier.weight(1f))
 
+        // RIGHT: iso + wb + resolution
         Row(
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalAlignment = Alignment.Top
         ) {
             Stat("ISO", iso.toString())
-            Stat("WB", "${wb}K", highlight = wbAuto)
-            Stat("TINT", tint.toString())
+            Stat("WB", wb)
             Badge(resolution)
         }
     }
 }
 
 @Composable
-private fun Stat(label: String, value: String, highlight: Boolean = false) {
+private fun Stat(label: String, value: String) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.widthIn(min = 44.dp)
     ) {
         Text(label, style = ProcamType.Label, textAlign = TextAlign.Center)
         Spacer(Modifier.height(2.dp))
-        Text(
-            value,
-            style = ProcamType.Value,
-            color = if (highlight) ProcamColors.Accent else ProcamColors.Text
-        )
+        Text(value, style = ProcamType.Value)
     }
 }
 
