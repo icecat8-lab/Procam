@@ -3,7 +3,6 @@ package com.procam.ui
 import android.content.Context
 import android.hardware.camera2.CameraManager
 import android.view.Surface
-import android.view.SurfaceHolder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -19,36 +18,14 @@ import kotlin.math.abs
 @Composable
 fun CameraScreen() {
     val context = LocalContext.current
-    val engine = remember { ProcamEngine(context) { } }
-
     var engineState by remember { mutableStateOf(ProcamEngine.State()) }
-    var previewSurface by remember { mutableStateOf<Surface?>(null) }
+    val engine = remember {
+        ProcamEngine(context) { newState -> engineState = newState }
+    }
     var mode by remember { mutableStateOf(CameraMode.VIDEO) }
 
-    // wire callback
-    LaunchedEffect(Unit) {
-        // re-create engine with proper callback
-    }
+    val timecode = formatTimecode(engineState.durationMs)
 
-    // swap engine callback
-    val stateHolder = remember { mutableStateOf(ProcamEngine.State()) }
-    LaunchedEffect(engine) {
-        // recreate with callback
-    }
-
-    // Use a simpler approach - engine already created
-    LaunchedEffect(previewSurface) {
-        val s = previewSurface ?: return@LaunchedEffect
-        val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        // Engine re-created with callback through factory
-    }
-
-    // timecode
-    val timecode = remember(engineState.durationMs) {
-        formatTimecode(engineState.durationMs)
-    }
-
-    // fake histograms (will wire to real later)
     val histR = remember { FloatArray(64) { i -> (1f - abs(i - 20) / 40f).coerceIn(0f, 1f) * 0.9f } }
     val histG = remember { FloatArray(64) { i -> (1f - abs(i - 30) / 40f).coerceIn(0f, 1f) * 0.85f } }
     val histB = remember { FloatArray(64) { i -> (1f - abs(i - 24) / 40f).coerceIn(0f, 1f) * 0.8f } }
@@ -57,7 +34,6 @@ fun CameraScreen() {
         Box(Modifier.weight(1f).fillMaxHeight()) {
             CameraPreview(
                 onSurfaceReady = { holder ->
-                    previewSurface = holder.surface
                     val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
                     engine.open(cm, holder.surface)
                 },
@@ -138,7 +114,7 @@ private fun formatTimecode(ms: Long): String {
     val h = totalSec / 3600
     val m = (totalSec / 60) % 60
     val s = totalSec % 60
-    val f = (ms / 1000.0 * 30).toInt() % 30
+    val f = ((ms % 1000) * 30 / 1000).toInt()
     return "%02d:%02d:%02d:%02d".format(h, m, s, f)
 }
 
