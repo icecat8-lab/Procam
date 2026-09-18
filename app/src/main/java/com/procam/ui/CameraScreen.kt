@@ -22,6 +22,12 @@ private sealed class Screen {
     object More : Screen()
     object Resolution : Screen()
     object Fps : Screen()
+    object Codec : Screen()
+}
+
+private fun bitrateFor(width: Int, height: Int, fps: Int): Int {
+    val pixels = width.toLong() * height.toLong() * fps.toLong()
+    return (pixels * 0.10).toInt().coerceIn(5_000_000, 120_000_000)
 }
 
 @Composable
@@ -45,27 +51,41 @@ fun CameraScreen(hasPermission: Boolean) {
                 settings = settings,
                 onBack = { screen = Screen.Camera },
                 onResolutionClick = { screen = Screen.Resolution },
-                onFpsClick = { screen = Screen.Fps }
+                onFpsClick = { screen = Screen.Fps },
+                onCodecClick = { screen = Screen.Codec }
             )
             return
         }
         Screen.Resolution -> {
             val options = listOf(
-                "3840×2160 (4K)" to VideoSettings(3840, 2160, 30, 50_000_000, "video/avc", "H.264", "4K 30"),
-                "1920×1080 (FHD)" to VideoSettings(1920, 1080, 30, 20_000_000, "video/avc", "H.264", "1080p 30"),
-                "1280×720 (HD)" to VideoSettings(1280, 720, 30, 10_000_000, "video/avc", "H.264", "720p 30")
+                SelectOption(
+                    "3840×2160 (4K)",
+                    VideoSettings(3840, 2160, 30, bitrateFor(3840, 2160, 30),
+                        settings.codec, settings.codecLabel)
+                ),
+                SelectOption(
+                    "1920×1080 (FHD)",
+                    VideoSettings(1920, 1080, 30, bitrateFor(1920, 1080, 30),
+                        settings.codec, settings.codecLabel)
+                ),
+                SelectOption(
+                    "1280×720 (HD)",
+                    VideoSettings(1280, 720, 30, bitrateFor(1280, 720, 30),
+                        settings.codec, settings.codecLabel)
+                )
             )
             SelectScreen(
                 title = "Resolution",
                 options = options,
-                current = settings,
+                currentMatch = { it.settings.width == settings.width && it.settings.height == settings.height },
                 onBack = { screen = Screen.More },
-                onSelect = { selected ->
+                onSelect = { option ->
+                    val newFps = if (option.settings.height == 2160) 30 else settings.fps
                     settings = settings.copy(
-                        width = selected.width,
-                        height = selected.height,
-                        bitrate = selected.bitrate,
-                        label = selected.label
+                        width = option.settings.width,
+                        height = option.settings.height,
+                        fps = newFps,
+                        bitrate = bitrateFor(option.settings.width, option.settings.height, newFps)
                     )
                     screen = Screen.More
                 }
@@ -73,17 +93,46 @@ fun CameraScreen(hasPermission: Boolean) {
             return
         }
         Screen.Fps -> {
-            val options = listOf(
-                "30 fps" to VideoSettings(settings.width, settings.height, 30, settings.bitrate, "video/avc", "H.264", settings.label),
-                "60 fps" to VideoSettings(settings.width, settings.height, 60, settings.bitrate * 2, "video/avc", "H.264", settings.label)
-            )
+            val available = when (settings.height) {
+                2160 -> listOf(30)
+                else -> listOf(30, 60)
+            }
+            val options = available.map { fps ->
+                SelectOption(
+                    "$fps fps",
+                    settings.copy(fps = fps, bitrate = bitrateFor(settings.width, settings.height, fps))
+                )
+            }
             SelectScreen(
                 title = "FPS",
                 options = options,
-                current = settings,
+                currentMatch = { it.settings.fps == settings.fps },
                 onBack = { screen = Screen.More },
-                onSelect = { selected ->
-                    settings = settings.copy(fps = selected.fps, bitrate = selected.bitrate)
+                onSelect = { option ->
+                    settings = settings.copy(
+                        fps = option.settings.fps,
+                        bitrate = option.settings.bitrate
+                    )
+                    screen = Screen.More
+                }
+            )
+            return
+        }
+        Screen.Codec -> {
+            val options = listOf(
+                SelectOption("H.264", settings.copy(codec = "video/avc", codecLabel = "H.264")),
+                SelectOption("H.265 (HEVC)", settings.copy(codec = "video/hevc", codecLabel = "H.265"))
+            )
+            SelectScreen(
+                title = "Codec",
+                options = options,
+                currentMatch = { it.settings.codec == settings.codec },
+                onBack = { screen = Screen.More },
+                onSelect = { option ->
+                    settings = settings.copy(
+                        codec = option.settings.codec,
+                        codecLabel = option.settings.codecLabel
+                    )
                     screen = Screen.More
                 }
             )
@@ -117,7 +166,12 @@ fun CameraScreen(hasPermission: Boolean) {
                 iris = "f1.8",
                 iso = engineState.iso,
                 wb = if (engineState.wbKelvin > 0) "${engineState.wbKelvin}K" else "AUTO",
-                resolution = "${settings.width}×${settings.height}",
+                resolution = when (settings.height) {
+                    2160 -> "4K"
+                    1080 -> "1080p"
+                    720 -> "720p"
+                    else -> "${settings.width}×${settings.height}"
+                },
                 isRecording = engineState.isRecording,
                 modifier = Modifier.align(Alignment.TopStart)
             )
@@ -157,9 +211,7 @@ fun CameraScreen(hasPermission: Boolean) {
                 if (engineState.isRecording) {
                     engine.stopRecording()
                 } else {
-                    val dir = context.getExternalFilesDir(null) ?: context.filesDir
-                    val file = java.io.File(dir, "PROCAM_${System.currentTimeMillis()}.mp4")
-                    engine.startRecording(file, settings)
+                    engine.startRecording(settings)
                 }
             },
             onOpenGallery = {
