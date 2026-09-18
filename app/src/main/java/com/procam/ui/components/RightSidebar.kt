@@ -21,18 +21,14 @@ import androidx.compose.ui.unit.dp
 import com.procam.ui.theme.ProcamColors
 import com.procam.ui.theme.ProcamType
 
-enum class CameraMode { VIDEO }
-
 @Composable
 fun RightSidebar(
     isRecording: Boolean,
-    selectedMode: CameraMode,
     onRecordToggle: () -> Unit,
     onOpenGallery: () -> Unit,
     onOpenMore: () -> Unit,
-    onToggleLut: () -> Unit = {},
-    onToggleGrid: () -> Unit = {},
-    isGridOn: Boolean = false,
+    onToggleGrid: () -> Unit,
+    isGridOn: Boolean,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -57,7 +53,6 @@ fun RightSidebar(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            IconPill(Icons.Outlined.MonitorHeart, "LUT", false, onToggleLut)
             IconPill(Icons.Outlined.GridOn, "Grid", isGridOn, onToggleGrid)
             IconPill(Icons.Outlined.PhotoLibrary, "Media", false, onOpenGallery)
             IconPill(Icons.Outlined.MoreHoriz, "More", false, onOpenMore)
