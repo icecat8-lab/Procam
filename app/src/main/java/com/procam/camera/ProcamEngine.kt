@@ -16,6 +16,16 @@ import java.io.File
 import java.nio.ByteBuffer
 import kotlin.math.sqrt
 
+data class VideoSettings(
+    val width: Int = 1920,
+    val height: Int = 1080,
+    val fps: Int = 30,
+    val bitrate: Int = 20_000_000,
+    val codec: String = "video/avc",
+    val codecLabel: String = "H.264",
+    val label: String = "1080p 30"
+)
+
 class ProcamEngine(
     private val context: Context,
     private val onState: (State) -> Unit
@@ -37,11 +47,6 @@ class ProcamEngine(
     companion object {
         private const val TAG = "ProcamEngine"
         private const val CAMERA_ID = "0"
-        private const val VIDEO_WIDTH = 1920
-        private const val VIDEO_HEIGHT = 1080
-        private const val FRAME_RATE = 30
-        private const val VIDEO_BITRATE = 20_000_000
-        private const val I_FRAME_INTERVAL = 1
         private const val AUDIO_SAMPLE_RATE = 48000
         private const val AUDIO_BITRATE = 192_000
     }
@@ -68,7 +73,7 @@ class ProcamEngine(
     private var startTimeMs = 0L
     private var currentOutputFile: File? = null
 
-    private var manualMode = false
+    private var activeSettings = VideoSettings()
 
     private var state = State()
     private fun emit(patch: State.() -> State) {
@@ -86,7 +91,6 @@ class ProcamEngine(
             val shutter = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
             val gains = result.get(CaptureResult.COLOR_CORRECTION_GAINS)
             val kelvin = gains?.let { gainsToKelvin(it.red, it.greenEven, it.blue) } ?: 0
-
             if (iso != state.iso || shutter != state.shutterNs || kelvin != state.wbKelvin) {
                 emit { copy(iso = iso, shutterNs = shutter, wbKelvin = kelvin) }
             }
@@ -100,12 +104,34 @@ class ProcamEngine(
         return k.coerceIn(2000, 10000)
     }
 
-    fun open(cameraManager: CameraManager, surface: Surface) {
-        if (cameraDevice != null) return
-        bgThread = HandlerThread("ProcamBg").also { it.start() }
-        bgHandler = Handler(bgThread!!.looper)
-        previewSurface = surface
+    private fun ensureThread() {
+        if (bgThread == null) {
+            bgThread = HandlerThread("ProcamBg").also { it.start() }
+            bgHandler = Handler(bgThread!!.looper)
+        }
+    }
 
+    fun attachSurface(surface: Surface) {
+        ensureThread()
+        previewSurface = surface
+        if (cameraDevice != null) {
+            try { session?.close() } catch (_: Throwable) {}
+            session = null
+            createSession()
+        }
+    }
+
+    fun detachSurface() {
+        previewSurface = null
+    }
+
+    fun open(cameraManager: CameraManager, surface: Surface) {
+        ensureThread()
+        previewSurface = surface
+        if (cameraDevice != null) {
+            createSession()
+            return
+        }
         try {
             @Suppress("MissingPermission")
             cameraManager.openCamera(CAMERA_ID, object : CameraDevice.StateCallback() {
@@ -135,7 +161,9 @@ class ProcamEngine(
         try {
             requestBuilder = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                 addTarget(preview)
-                applyModes(this)
+                set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
             }
 
             @Suppress("DEPRECATION")
@@ -146,7 +174,6 @@ class ProcamEngine(
                         s.setRepeatingRequest(requestBuilder!!.build(), captureCallback, bgHandler)
                         emit { copy(isOpen = true, error = null) }
                     } catch (t: Throwable) {
-                        Log.e(TAG, "repeating failed", t)
                         emit { copy(error = t.message) }
                     }
                 }
@@ -155,43 +182,33 @@ class ProcamEngine(
                 }
             }, bgHandler)
         } catch (t: Throwable) {
-            Log.e(TAG, "session create failed", t)
             emit { copy(error = t.message) }
         }
     }
 
-    private fun applyModes(b: CaptureRequest.Builder) {
-        if (manualMode) {
-            b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF)
-            b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
-            b.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF)
-        } else {
-            b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-            b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-            b.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-        }
-    }
-
-    fun startRecording(outputFile: File) {
+    fun startRecording(outputFile: File, settings: VideoSettings) {
         if (state.isRecording) return
         val device = cameraDevice ?: return
         val preview = previewSurface ?: return
 
+        activeSettings = settings
         currentOutputFile = outputFile
+
+        outputFile.parentFile?.mkdirs()
 
         try {
             val videoFormat = MediaFormat.createVideoFormat(
-                "video/avc", VIDEO_WIDTH, VIDEO_HEIGHT
+                settings.codec, settings.width, settings.height
             ).apply {
                 setInteger(
                     MediaFormat.KEY_COLOR_FORMAT,
                     MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
                 )
-                setInteger(MediaFormat.KEY_BIT_RATE, VIDEO_BITRATE)
-                setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE)
-                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL)
+                setInteger(MediaFormat.KEY_BIT_RATE, settings.bitrate)
+                setInteger(MediaFormat.KEY_FRAME_RATE, settings.fps)
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             }
-            videoEncoder = MediaCodec.createEncoderByType("video/avc").apply {
+            videoEncoder = MediaCodec.createEncoderByType(settings.codec).apply {
                 configure(videoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 videoInputSurface = createInputSurface()
                 start()
@@ -231,9 +248,11 @@ class ProcamEngine(
                             addTarget(videoInputSurface!!)
                             set(
                                 CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                                Range(FRAME_RATE, FRAME_RATE)
+                                Range(settings.fps, settings.fps)
                             )
-                            applyModes(this)
+                            set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                            set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                            set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
                         }
                         try {
                             s.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
@@ -244,7 +263,6 @@ class ProcamEngine(
                             emit { copy(isRecording = true, durationMs = 0L, error = null) }
                             startTimer()
                         } catch (t: Throwable) {
-                            Log.e(TAG, "recording start failed", t)
                             emit { copy(error = t.message) }
                         }
                     }
@@ -380,7 +398,12 @@ class ProcamEngine(
                     val rmsR = sqrt(sumR / count).toFloat() / 32768f
                     val dbL = (20 * kotlin.math.log10(rmsL.coerceAtLeast(1e-6f)) + 60) / 60
                     val dbR = (20 * kotlin.math.log10(rmsR.coerceAtLeast(1e-6f)) + 60) / 60
-                    emit { copy(audioLevelL = dbL.coerceIn(0f, 1f), audioLevelR = dbR.coerceIn(0f, 1f)) }
+                    emit {
+                        copy(
+                            audioLevelL = dbL.coerceIn(0f, 1f),
+                            audioLevelR = dbR.coerceIn(0f, 1f)
+                        )
+                    }
                 }
 
                 val inIdx = enc.dequeueInputBuffer(10_000)
@@ -425,13 +448,22 @@ class ProcamEngine(
             videoInputSurface?.release()
             videoInputSurface = null
 
-            currentOutputFile?.let { file ->
-                val uri = addToGallery(file)
-                emit { copy(isRecording = false, durationMs = 0L, audioLevelL = 0f, audioLevelR = 0f, lastFile = file.absolutePath, lastUri = uri) }
-            } ?: emit { copy(isRecording = false, durationMs = 0L, audioLevelL = 0f, audioLevelR = 0f) }
+            val savedUri = currentOutputFile?.let { file -> addToGallery(file) }
+            emit {
+                copy(
+                    isRecording = false,
+                    durationMs = 0L,
+                    audioLevelL = 0f,
+                    audioLevelR = 0f,
+                    lastFile = currentOutputFile?.absolutePath,
+                    lastUri = savedUri
+                )
+            }
+            currentOutputFile = null
 
             cameraDevice?.let {
-                session?.close()
+                try { session?.close() } catch (_: Throwable) {}
+                session = null
                 createSession()
             }
         } catch (t: Throwable) {
@@ -441,6 +473,7 @@ class ProcamEngine(
 
     private fun addToGallery(file: File): Uri? {
         return try {
+            if (!file.exists()) return null
             val values = ContentValues().apply {
                 put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
                 put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
@@ -450,7 +483,8 @@ class ProcamEngine(
                 }
             }
             val resolver = context.contentResolver
-            val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: return null
+            val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+                ?: return null
             resolver.openOutputStream(uri)?.use { out ->
                 file.inputStream().use { input -> input.copyTo(out) }
             }
@@ -482,12 +516,12 @@ class ProcamEngine(
     fun close() {
         try {
             if (state.isRecording) stopRecording()
-            session?.close(); session = null
+            try { session?.close() } catch (_: Throwable) {}
+            session = null
             cameraDevice?.close(); cameraDevice = null
             bgThread?.quitSafely(); bgThread = null
             bgHandler = null
-        } catch (_: Throwable) {
-        }
+        } catch (_: Throwable) {}
         emit { copy(isOpen = false) }
     }
 }
