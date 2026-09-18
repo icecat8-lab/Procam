@@ -19,10 +19,9 @@ class ProcamEngine(
     data class State(
         val isOpen: Boolean = false,
         val isRecording: Boolean = false,
-        val iso: Int = 100,
-        val shutterNs: Long = 1_000_000_000L / 30,
-        val wbKelvin: Int = 5500,
-        val focusDistance: Float = 0f,
+        val iso: Int = 0,
+        val shutterNs: Long = 0L,
+        val wbKelvin: Int = 0,
         val durationMs: Long = 0L,
         val lastFile: String? = null,
         val error: String? = null
@@ -61,15 +60,8 @@ class ProcamEngine(
     @Volatile private var audioRecording = false
     private var startTimeMs = 0L
 
-    private var manualIso: Int = 100
-    private var manualShutterNs: Long = 1_000_000_000L / 30
-    private var manualWbKelvin: Int = 5500
-    private var manualFocus: Float = 0f
-    private var manualMode = true
-
-    private var isoRange: Range<Int> = Range(100, 3200)
-    private var shutterRangeNs: Range<Long> = Range(1_000_000L, 500_000_000L)
-    private var focusRange: Float = 10f
+    // AUTO MODE by default so preview works
+    private var manualMode = false
 
     private var state = State()
     private fun emit(patch: State.() -> State) {
@@ -77,21 +69,41 @@ class ProcamEngine(
         onState(state)
     }
 
+    private val captureCallback = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(
+            s: CameraCaptureSession,
+            request: CaptureRequest,
+            result: TotalCaptureResult
+        ) {
+            val iso = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: 0
+            val shutter = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
+            val gains = result.get(CaptureResult.COLOR_CORRECTION_GAINS)
+            val kelvin = gains?.let { gainsToKelvin(it.red, it.greenEven, it.blue) } ?: 0
+
+            if (iso != state.iso || shutter != state.shutterNs || kelvin != state.wbKelvin) {
+                emit { copy(iso = iso, shutterNs = shutter, wbKelvin = kelvin) }
+            }
+        }
+    }
+
+    private fun gainsToKelvin(r: Float, g: Float, b: Float): Int {
+        if (r <= 0f || b <= 0f) return 0
+        // rough mapping r/b ratio → Kelvin
+        val ratio = (r / b).coerceIn(0.3f, 4f)
+        // ratio ~3 → 2000K, ratio ~0.5 → 10000K
+        val k = (2000 + (3f - ratio) / 2.5f * 8000f).toInt()
+        return k.coerceIn(2000, 10000)
+    }
+
     // ==================== LIFECYCLE ====================
 
     fun open(cameraManager: CameraManager, surface: Surface) {
+        if (cameraDevice != null) return
         bgThread = HandlerThread("ProcamBg").also { it.start() }
         bgHandler = Handler(bgThread!!.looper)
         previewSurface = surface
 
         try {
-            val chars = cameraManager.getCameraCharacteristics(CAMERA_ID)
-            isoRange = chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
-                ?: Range(100, 3200)
-            shutterRangeNs = chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
-                ?: Range(1_000_000L, 500_000_000L)
-            focusRange = chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
-
             @Suppress("MissingPermission")
             cameraManager.openCamera(CAMERA_ID, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
@@ -120,9 +132,7 @@ class ProcamEngine(
         try {
             requestBuilder = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                 addTarget(preview)
-                set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
-                set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF)
-                applyManual(this)
+                applyModes(this)
             }
 
             @Suppress("DEPRECATION")
@@ -130,10 +140,11 @@ class ProcamEngine(
                 override fun onConfigured(s: CameraCaptureSession) {
                     session = s
                     try {
-                        s.setRepeatingRequest(requestBuilder!!.build(), null, bgHandler)
-                        emit { copy(isOpen = true) }
+                        s.setRepeatingRequest(requestBuilder!!.build(), captureCallback, bgHandler)
+                        emit { copy(isOpen = true, error = null) }
                     } catch (t: Throwable) {
                         Log.e(TAG, "repeating failed", t)
+                        emit { copy(error = t.message) }
                     }
                 }
                 override fun onConfigureFailed(s: CameraCaptureSession) {
@@ -146,91 +157,23 @@ class ProcamEngine(
         }
     }
 
-    private fun applyManual(b: CaptureRequest.Builder) {
-        if (!manualMode) {
+    private fun applyModes(b: CaptureRequest.Builder) {
+        if (manualMode) {
+            b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF)
+            b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+            b.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF)
+        } else {
+            b.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
             b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
             b.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-            return
         }
-        val iso = manualIso.coerceIn(isoRange.lower, isoRange.upper)
-        val shutter = manualShutterNs.coerceIn(shutterRangeNs.lower, shutterRangeNs.upper)
-        b.set(CaptureRequest.SENSOR_SENSITIVITY, iso)
-        b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, shutter)
-        b.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_OFF)
-        b.set(CaptureRequest.COLOR_CORRECTION_MODE, CaptureRequest.COLOR_CORRECTION_MODE_TRANSFORM_MATRIX)
-        val rggb = colorMatrixForKelvin(manualWbKelvin)
-        b.set(
-            CaptureRequest.COLOR_CORRECTION_GAINS,
-            RggbChannelVector(rggb[0], rggb[1], rggb[2], rggb[3])
-        )
-        if (focusRange > 0f) {
-            b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
-            b.set(CaptureRequest.LENS_FOCUS_DISTANCE, manualFocus.coerceIn(0f, focusRange))
-        }
-    }
-
-    private fun colorMatrixForKelvin(kelvin: Int): FloatArray {
-        val k = kelvin / 100f
-        val r: Float
-        val g: Float
-        val b: Float
-        if (k <= 66) {
-            r = 1f
-            g = (0.39008157876f * Math.log(k.toDouble()) - 0.63184144378).toFloat().coerceIn(0f, 1f)
-            b = if (k <= 19) 0f
-            else (0.543206789110f * Math.log((k - 10).toDouble()) - 1.19625408914).toFloat()
-                .coerceIn(0f, 1f)
-        } else {
-            r = (1.29293618606f * Math.pow(k - 60.0, -0.1332047592)).toFloat().coerceIn(0f, 1f)
-            g = (1.12989086089f * Math.pow(k - 60.0, -0.0755148492)).toFloat().coerceIn(0f, 1f)
-            b = 1f
-        }
-        return floatArrayOf(r, g, g, b)
-    }
-
-    // ==================== MANUAL CONTROL ====================
-
-    fun setIso(value: Int) {
-        manualIso = value
-        requestBuilder?.let {
-            applyManual(it)
-            session?.setRepeatingRequest(it.build(), null, bgHandler)
-        }
-        emit { copy(iso = value) }
-    }
-
-    fun setShutter(ns: Long) {
-        manualShutterNs = ns
-        requestBuilder?.let {
-            applyManual(it)
-            session?.setRepeatingRequest(it.build(), null, bgHandler)
-        }
-        emit { copy(shutterNs = ns) }
-    }
-
-    fun setWb(kelvin: Int) {
-        manualWbKelvin = kelvin
-        requestBuilder?.let {
-            applyManual(it)
-            session?.setRepeatingRequest(it.build(), null, bgHandler)
-        }
-        emit { copy(wbKelvin = kelvin) }
-    }
-
-    fun setFocus(distance: Float) {
-        manualFocus = distance
-        requestBuilder?.let {
-            applyManual(it)
-            session?.setRepeatingRequest(it.build(), null, bgHandler)
-        }
-        emit { copy(focusDistance = distance) }
     }
 
     fun setManualMode(on: Boolean) {
         manualMode = on
         requestBuilder?.let {
-            applyManual(it)
-            session?.setRepeatingRequest(it.build(), null, bgHandler)
+            applyModes(it)
+            session?.setRepeatingRequest(it.build(), captureCallback, bgHandler)
         }
     }
 
@@ -295,15 +238,15 @@ class ProcamEngine(
                                 CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
                                 Range(FRAME_RATE, FRAME_RATE)
                             )
-                            applyManual(this)
+                            applyModes(this)
                         }
                         try {
-                            s.setRepeatingRequest(rb.build(), null, bgHandler)
+                            s.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
                             startEncoderThreads()
                             audioRecording = true
                             startAudioCapture()
                             startTimeMs = System.currentTimeMillis()
-                            emit { copy(isRecording = true, error = null) }
+                            emit { copy(isRecording = true, durationMs = 0L, error = null) }
                             startTimer()
                         } catch (t: Throwable) {
                             Log.e(TAG, "recording start failed", t)
@@ -466,7 +409,8 @@ class ProcamEngine(
             videoInputSurface?.release()
             videoInputSurface = null
 
-            emit { copy(isRecording = false, lastFile = state.lastFile) }
+            // reset timer immediately
+            emit { copy(isRecording = false, durationMs = 0L, lastFile = state.lastFile) }
 
             cameraDevice?.let {
                 session?.close()
@@ -483,7 +427,7 @@ class ProcamEngine(
                 if (state.isRecording) {
                     val elapsed = System.currentTimeMillis() - startTimeMs
                     emit { copy(durationMs = elapsed) }
-                    bgHandler?.postDelayed(this, 100)
+                    bgHandler?.postDelayed(this, 200)
                 }
             }
         })
