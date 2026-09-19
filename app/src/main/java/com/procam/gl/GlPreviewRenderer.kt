@@ -14,8 +14,7 @@ import javax.microedition.khronos.opengles.GL10
 class GlPreviewRenderer(
     private val onSurfaceReady: (Surface) -> Unit,
     private val bufferWidth: Int,
-    private val bufferHeight: Int,
-    private val sensorOrientation: Int
+    private val bufferHeight: Int
 ) : GLSurfaceView.Renderer, SurfaceTexture.OnFrameAvailableListener {
 
     companion object {
@@ -148,12 +147,7 @@ void main() {
     fun setViewSize(viewWidth: Int, viewHeight: Int) {
         if (viewWidth <= 0 || viewHeight <= 0) return
 
-        val rotated = sensorOrientation == 90 || sensorOrientation == 270
-        val camAspect = if (rotated) {
-            bufferHeight.toFloat() / bufferWidth.toFloat()
-        } else {
-            bufferWidth.toFloat() / bufferHeight.toFloat()
-        }
+        val camAspect = bufferWidth.toFloat() / bufferHeight.toFloat()
         val viewAspect = viewWidth.toFloat() / viewHeight.toFloat()
 
         if (viewAspect > camAspect) {
