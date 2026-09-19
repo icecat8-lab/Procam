@@ -45,9 +45,10 @@ uniform float uSaturation;
 uniform float uTemperature;
 out vec4 fragColor;
 
-vec3 sampleLut(float r, float g, float b) {
-    float x = (b * uLutSize + r * (uLutSize - 1.0) + 0.5) / (uLutSize * uLutSize);
-    float y = (g * (uLutSize - 1.0) + 0.5) / uLutSize;
+vec3 sampleLut(float r, float g, float bIndex) {
+    float size = max(uLutSize, 2.0);
+    float x = (bIndex * size + r * (size - 1.0) + 0.5) / (size * size);
+    float y = (g * (size - 1.0) + 0.5) / size;
     return texture(uLut, vec2(x, y)).rgb;
 }
 
@@ -247,11 +248,33 @@ void main() {
     }
 
     fun release() {
+        val view = glSurfaceView
+        if (view != null) {
+            view.queueEvent {
+                releaseGlResources()
+            }
+        } else {
+            releaseGlResources()
+        }
+    }
+
+    private fun releaseGlResources() {
         try { surfaceTexture?.setOnFrameAvailableListener(null) } catch (_: Throwable) {}
         try { surfaceTexture?.release() } catch (_: Throwable) {}
         surfaceTexture = null
         try { cameraSurface?.release() } catch (_: Throwable) {}
         cameraSurface = null
+
+        if (lutTextureId != 0) {
+            GLES30.glDeleteTextures(1, intArrayOf(lutTextureId), 0)
+            lutTextureId = 0
+            lutSize = 0f
+            lutEnabled = false
+        }
+        if (externalTextureId != 0) {
+            GLES30.glDeleteTextures(1, intArrayOf(externalTextureId), 0)
+            externalTextureId = 0
+        }
         if (program != 0) {
             GLES30.glDeleteProgram(program)
             program = 0
