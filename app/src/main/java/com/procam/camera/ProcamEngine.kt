@@ -2,7 +2,10 @@ package com.procam.camera
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.ImageFormat
 import android.hardware.camera2.*
+import android.hardware.camera2.params.OutputConfiguration
+import android.hardware.camera2.params.SessionConfiguration
 import android.media.*
 import android.net.Uri
 import android.os.Build
@@ -14,6 +17,7 @@ import android.util.Range
 import android.view.Surface
 import java.io.File
 import java.nio.ByteBuffer
+import java.util.concurrent.Executor
 import kotlin.math.ln
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -37,6 +41,7 @@ class ProcamEngine(
         val iso: Int = 0,
         val shutterNs: Long = 0L,
         val wbKelvin: Int = 0,
+        val wbTint: Int = 0,
         val ev: Float = 0f,
         val durationMs: Long = 0L,
         val audioLevelL: Float = 0f,
@@ -60,6 +65,7 @@ class ProcamEngine(
 
     private var bgThread: HandlerThread? = null
     private var bgHandler: Handler? = null
+    private val executor = Executor { it.run() }
 
     private var videoEncoder: MediaCodec? = null
     private var videoInputSurface: Surface? = null
@@ -97,13 +103,26 @@ class ProcamEngine(
         ) {
             val iso = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: 0
             val shutter = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
-            val gains = result.get(CaptureResult.COLOR_CORRECTION_GAINS)
-            val kelvin = if (gains != null) {
-                gainsToKelvin(gains.red, (gains.greenEven + gains.greenOdd) / 2f, gains.blue)
-            } else 0
 
-            if (iso != state.iso || shutter != state.shutterNs || kelvin != state.wbKelvin) {
-                emit { copy(iso = iso, shutterNs = shutter, wbKelvin = kelvin) }
+            var kelvin = 0
+            var tint = 0
+
+            val cct = result.get(CaptureResult.COLOR_CORRECTION_COLOR_TEMPERATURE)
+            val cctTint = result.get(CaptureResult.COLOR_CORRECTION_COLOR_TINT)
+            if (cct != null && cct in 1000..20000) {
+                kelvin = cct
+                tint = cctTint ?: 0
+            } else {
+                val gains = result.get(CaptureResult.COLOR_CORRECTION_GAINS)
+                if (gains != null) {
+                    kelvin = gainsToKelvin(gains.red, (gains.greenEven + gains.greenOdd) / 2f, gains.blue)
+                }
+            }
+
+            if (iso != state.iso || shutter != state.shutterNs ||
+                kelvin != state.wbKelvin || tint != state.wbTint
+            ) {
+                emit { copy(iso = iso, shutterNs = shutter, wbKelvin = kelvin, wbTint = tint) }
             }
         }
     }
@@ -179,9 +198,7 @@ class ProcamEngine(
                 minEvIndex = range.lower
                 maxEvIndex = range.upper
             }
-            if (step != null) {
-                evStep = step.toFloat()
-            }
+            if (step != null) evStep = step.toFloat()
         } catch (_: Throwable) {}
     }
 
@@ -202,6 +219,17 @@ class ProcamEngine(
         try { session?.abortCaptures() } catch (_: Throwable) {}
         try { session?.close() } catch (_: Throwable) {}
         session = null
+    }
+
+    private fun buildPreviewRequest(device: CameraDevice, preview: Surface): CaptureRequest {
+        return device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+            addTarget(preview)
+            set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+            set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+            set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+            set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
+            set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
+        }.build()
     }
 
     fun setEv(evValue: Float) {
@@ -226,14 +254,7 @@ class ProcamEngine(
                     }
                     session?.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
                 } else {
-                    val rb = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                        addTarget(preview)
-                        set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-                        set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-                        set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-                        set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
-                    }
-                    session?.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
+                    session?.setRepeatingRequest(buildPreviewRequest(device, preview), captureCallback, bgHandler)
                 }
             } catch (t: Throwable) {
                 Log.e(TAG, "setEv failed", t)
@@ -248,21 +269,22 @@ class ProcamEngine(
         closeCurrentSession()
 
         try {
-            @Suppress("DEPRECATION")
-            device.createCaptureSession(
-                listOf(preview),
+            val previewConfig = OutputConfiguration(preview)
+            val outputConfigs = listOf(previewConfig)
+
+            val sessionConfig = SessionConfiguration(
+                SessionConfiguration.SESSION_REGULAR,
+                outputConfigs,
+                executor,
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(s: CameraCaptureSession) {
                         session = s
                         try {
-                            val rb = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                                addTarget(preview)
-                                set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-                                set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-                                set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-                                set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
-                            }
-                            s.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
+                            s.setRepeatingRequest(
+                                buildPreviewRequest(device, preview),
+                                captureCallback,
+                                bgHandler
+                            )
                             emit { copy(isOpen = true, error = null) }
                         } catch (t: Throwable) {
                             Log.e(TAG, "createSession onConfigured failed", t)
@@ -274,9 +296,30 @@ class ProcamEngine(
                         Log.e(TAG, "Session configure failed")
                         emit { copy(error = "Session config failed") }
                     }
-                },
-                bgHandler
+                }
             )
+
+            val keys = try {
+                cameraManager?.getCameraCharacteristics(CAMERA_ID)
+                    ?.availableSessionKeys
+            } catch (_: Throwable) { null }
+
+            if (keys != null && keys.isNotEmpty()) {
+                try {
+                    val params = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                        set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                        set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                        set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+                        set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
+                        set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
+                    }.build()
+                    sessionConfig.sessionParameters = params
+                } catch (t: Throwable) {
+                    Log.w(TAG, "sessionParameters failed, fallback", t)
+                }
+            }
+
+            device.createCaptureSession(sessionConfig)
         } catch (t: Throwable) {
             Log.e(TAG, "createSession failed", t)
             emit { copy(error = t.message) }
@@ -343,9 +386,14 @@ class ProcamEngine(
 
             val videoSurface = videoInputSurface!!
 
-            @Suppress("DEPRECATION")
-            device.createCaptureSession(
-                listOf(preview, videoSurface),
+            val previewConfig = OutputConfiguration(preview)
+            val videoConfig = OutputConfiguration(videoSurface)
+            val outputConfigs = listOf(previewConfig, videoConfig)
+
+            val sessionConfig = SessionConfiguration(
+                SessionConfiguration.SESSION_REGULAR,
+                outputConfigs,
+                executor,
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(s: CameraCaptureSession) {
                         session = s
@@ -390,9 +438,30 @@ class ProcamEngine(
                         emit { copy(error = "Record session config failed") }
                         cleanupRecording()
                     }
-                },
-                bgHandler
+                }
             )
+
+            val keys = try {
+                cameraManager?.getCameraCharacteristics(CAMERA_ID)
+                    ?.availableSessionKeys
+            } catch (_: Throwable) { null }
+
+            if (keys != null && keys.isNotEmpty()) {
+                try {
+                    val params = device.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
+                        set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(settings.fps, settings.fps))
+                        set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                        set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                        set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+                        set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
+                    }.build()
+                    sessionConfig.sessionParameters = params
+                } catch (t: Throwable) {
+                    Log.w(TAG, "record sessionParameters failed", t)
+                }
+            }
+
+            device.createCaptureSession(sessionConfig)
         } catch (t: Throwable) {
             Log.e(TAG, "startRecording failed", t)
             cleanupRecording()
@@ -417,9 +486,7 @@ class ProcamEngine(
                     }
                     enc.releaseOutputBuffer(outIdx, false)
 
-                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                        break
-                    }
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) break
                 }
             }
         } catch (t: Throwable) {
@@ -445,9 +512,7 @@ class ProcamEngine(
                     }
                     enc.releaseOutputBuffer(outIdx, false)
 
-                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                        break
-                    }
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) break
                 }
             }
         } catch (t: Throwable) {
@@ -676,9 +741,7 @@ class ProcamEngine(
                 ?: return null
 
             resolver.openOutputStream(uri)?.use { out ->
-                file.inputStream().use { input ->
-                    input.copyTo(out)
-                }
+                file.inputStream().use { input -> input.copyTo(out) }
             } ?: run {
                 resolver.delete(uri, null, null)
                 return null
@@ -711,9 +774,7 @@ class ProcamEngine(
 
     fun close() {
         try {
-            if (state.isRecording) {
-                stopRecordingInternal()
-            }
+            if (state.isRecording) stopRecordingInternal()
             closeCurrentSession()
             cameraDevice?.close(); cameraDevice = null
             cameraManager = null
