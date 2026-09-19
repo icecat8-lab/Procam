@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.procam.camera.ProcamEngine
@@ -219,7 +220,7 @@ fun CameraScreen(hasPermission: Boolean) {
 
             if (!hasPermission) {
                 Text(
-                    "需要กล้องและไมค์",
+                    "ต้องอนุญาตการใช้กล้องและไมโครโฟน",
                     color = Color.Yellow,
                     modifier = Modifier.align(Alignment.Center)
                 )
@@ -244,7 +245,15 @@ fun CameraScreen(hasPermission: Boolean) {
                 }
             },
             onOpenGallery = {
-                val intent = Intent(Intent.ACTION_VIEW).apply { type = "video/*" }
+                val uri = engineState.lastUri
+                val intent = if (uri != null) {
+                    Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "video/mp4")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                } else {
+                    Intent(Intent.ACTION_VIEW).apply { type = "video/*" }
+                }
                 runCatching { context.startActivity(intent) }
             },
             onOpenMore = { screen = Screen.More },
@@ -264,6 +273,10 @@ private fun formatTimecode(ms: Long, isRecording: Boolean): String {
 
 private fun formatShutter(ns: Long): String {
     if (ns <= 0) return "AUTO"
-    val denom = (1_000_000_000.0 / ns).toInt()
-    return "1/$denom"
+    return if (ns >= 1_000_000_000L) {
+        "%.1fs".format(ns / 1_000_000_000.0)
+    } else {
+        val denom = (1_000_000_000.0 / ns).roundToInt().coerceAtLeast(1)
+        "1/$denom"
+    }
 }
