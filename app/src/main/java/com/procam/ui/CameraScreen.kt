@@ -17,6 +17,7 @@ import com.procam.camera.ProcamEngine
 import com.procam.camera.VideoSettings
 import com.procam.ui.components.*
 import com.procam.ui.theme.ProcamColors
+import kotlin.math.log2
 
 private sealed class Screen {
     object Camera : Screen()
@@ -150,17 +151,23 @@ fun CameraScreen(hasPermission: Boolean) {
     }
 
     val timecode = formatTimecode(engineState.durationMs, engineState.isRecording)
+    val evText = computeEV(engineState.shutterNs, engineState.iso)
 
     Row(Modifier.fillMaxSize().background(ProcamColors.Bg)) {
         Box(Modifier.weight(1f).fillMaxHeight()) {
-            CameraPreview(
-                onSurfaceReady = { holder ->
-                    previewSurface = holder.surface
-                },
+            GlCameraPreview(
+                onSurfaceReady = { surface -> previewSurface = surface },
                 onSurfaceDestroyed = {
                     previewSurface = null
                     engine.detachSurface()
                 },
+                lutEnabled = false,
+                lutTextureId = 0,
+                lutSize = 0f,
+                brightness = 0f,
+                contrast = 1f,
+                saturation = 1f,
+                temperature = 0f,
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -169,15 +176,10 @@ fun CameraScreen(hasPermission: Boolean) {
             TopStatusBar(
                 timecode = timecode,
                 shutter = formatShutter(engineState.shutterNs),
-                iris = "f1.8",
+                iris = "F1.8",
                 iso = engineState.iso,
                 wb = if (engineState.wbKelvin > 0) "${engineState.wbKelvin}K" else "AUTO",
-                resolution = when (settings.height) {
-                    2160 -> "4K"
-                    1080 -> "1080p"
-                    720 -> "720p"
-                    else -> "${settings.width}×${settings.height}"
-                },
+                ev = evText,
                 isRecording = engineState.isRecording,
                 modifier = Modifier.align(Alignment.TopStart)
             )
@@ -243,4 +245,12 @@ private fun formatShutter(ns: Long): String {
     if (ns <= 0) return "AUTO"
     val denom = (1_000_000_000.0 / ns).toInt()
     return "1/$denom"
+}
+
+private fun computeEV(shutterNs: Long, iso: Int): String {
+    if (shutterNs <= 0L || iso <= 0) return "EV —"
+    val t = shutterNs / 1_000_000_000.0
+    val n = 1.8
+    val ev = log2(n * n / t) - log2(iso / 100.0)
+    return "EV %.1f".format(ev)
 }
