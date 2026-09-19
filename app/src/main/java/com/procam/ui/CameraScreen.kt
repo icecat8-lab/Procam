@@ -12,7 +12,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.procam.camera.ProcamEngine
 import com.procam.camera.VideoSettings
 import com.procam.ui.components.*
@@ -34,6 +37,8 @@ private fun bitrateFor(width: Int, height: Int, fps: Int): Int {
 @Composable
 fun CameraScreen(hasPermission: Boolean) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     var engineState by remember { mutableStateOf(ProcamEngine.State()) }
     val engine = remember {
         ProcamEngine(context) { newState -> engineState = newState }
@@ -41,23 +46,33 @@ fun CameraScreen(hasPermission: Boolean) {
     var screen by remember { mutableStateOf<Screen>(Screen.Camera) }
     var settings by remember { mutableStateOf(VideoSettings()) }
     var isGridOn by remember { mutableStateOf(false) }
-    var isOpened by remember { mutableStateOf(false) }
     var previewSurface by remember { mutableStateOf<Surface?>(null) }
 
     LaunchedEffect(hasPermission, previewSurface) {
         if (hasPermission && previewSurface != null) {
             val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-            if (!isOpened) {
-                isOpened = true
-                engine.open(cm, previewSurface!!)
-            } else {
-                engine.attachSurface(previewSurface!!)
-            }
+            engine.open(cm, previewSurface!!)
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose { engine.close() }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    engine.close()
+                    previewSurface = null
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    // engine.open จะ trigger ผ่าน LaunchedEffect อีกครั้ง
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            engine.close()
+        }
     }
 
     if (screen is Screen.More) {
