@@ -3,6 +3,7 @@ package com.procam.ui
 import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraManager
+import android.view.Surface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
@@ -40,6 +41,16 @@ fun CameraScreen(hasPermission: Boolean) {
     var screen by remember { mutableStateOf<Screen>(Screen.Camera) }
     var settings by remember { mutableStateOf(VideoSettings()) }
     var isGridOn by remember { mutableStateOf(false) }
+    var previewSurface by remember { mutableStateOf<Surface?>(null) }
+    var opened by remember { mutableStateOf(false) }
+
+    LaunchedEffect(hasPermission, previewSurface) {
+        if (hasPermission && previewSurface != null && !opened) {
+            opened = true
+            val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            engine.open(cm, previewSurface!!)
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose { engine.close() }
@@ -93,10 +104,7 @@ fun CameraScreen(hasPermission: Boolean) {
             return
         }
         Screen.Fps -> {
-            val available = when (settings.height) {
-                2160 -> listOf(30)
-                else -> listOf(30, 60)
-            }
+            val available = if (settings.height == 2160) listOf(30) else listOf(30, 60)
             val options = available.map { fps ->
                 SelectOption(
                     "$fps fps",
@@ -147,14 +155,12 @@ fun CameraScreen(hasPermission: Boolean) {
         Box(Modifier.weight(1f).fillMaxHeight()) {
             CameraPreview(
                 onSurfaceReady = { holder ->
-                    val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-                    if (engineState.isOpen) {
-                        engine.attachSurface(holder.surface)
-                    } else {
-                        engine.open(cm, holder.surface)
-                    }
+                    previewSurface = holder.surface
                 },
-                onSurfaceDestroyed = { engine.detachSurface() },
+                onSurfaceDestroyed = {
+                    previewSurface = null
+                    engine.detachSurface()
+                },
                 modifier = Modifier.fillMaxSize()
             )
 
