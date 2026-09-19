@@ -34,6 +34,31 @@ class MainActivity : ComponentActivity() {
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
 
+        checkAndRequestPermissions()
+
+        setContent {
+            CameraScreen(hasPermission = hasPermission.value)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        checkPermissionOnly()
+    }
+
+    private fun checkPermissionOnly() {
+        val camGranted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+        val micGranted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (camGranted && micGranted && !hasPermission.value) {
+            hasPermission.value = true
+        }
+    }
+
+    private fun checkAndRequestPermissions() {
         val camGranted = ContextCompat.checkSelfPermission(
             this, Manifest.permission.CAMERA
         ) == PackageManager.PERMISSION_GRANTED
@@ -48,10 +73,6 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.CAMERA,
                 Manifest.permission.RECORD_AUDIO
             ))
-        }
-
-        setContent {
-            CameraScreen(hasPermission = hasPermission.value)
         }
     }
 }
