@@ -32,7 +32,7 @@ fun GlCameraPreview(
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var rendererRef by remember { mutableStateOf<GlPreviewRenderer?>(null) }
 
-    val previewSize = remember {
+    val previewInfo = remember {
         CameraSizeResolver.resolve(context)
     }
 
@@ -48,8 +48,9 @@ fun GlCameraPreview(
                         onSurfaceReady = { surface ->
                             mainHandler.post { onSurfaceReady(surface) }
                         },
-                        bufferWidth = previewSize.width,
-                        bufferHeight = previewSize.height
+                        bufferWidth = previewInfo.width,
+                        bufferHeight = previewInfo.height,
+                        sensorOrientation = previewInfo.sensorOrientation
                     )
                     setRenderer(renderer)
                     renderer.bindGlSurfaceView(this)
@@ -64,7 +65,7 @@ fun GlCameraPreview(
             }
         )
 
-        LaunchedEffect(viewWpx, viewHpx, previewSize) {
+        LaunchedEffect(viewWpx, viewHpx, previewInfo) {
             rendererRef?.setViewSize(viewWpx, viewHpx)
         }
     }
