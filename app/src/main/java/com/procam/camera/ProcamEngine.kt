@@ -8,11 +8,11 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.util.Log
 import android.util.Range
 import android.view.Surface
+import java.io.File
 import java.nio.ByteBuffer
 import kotlin.math.ln
 import kotlin.math.sqrt
@@ -54,6 +54,7 @@ class ProcamEngine(
     private var session: CameraCaptureSession? = null
     private var previewSurface: Surface? = null
     private var requestBuilder: CaptureRequest.Builder? = null
+    private var isOpening = false
 
     private var bgThread: HandlerThread? = null
     private var bgHandler: Handler? = null
@@ -63,8 +64,7 @@ class ProcamEngine(
     private var audioEncoder: MediaCodec? = null
     private var audioRecord: AudioRecord? = null
     private var muxer: MediaMuxer? = null
-    private var pfd: ParcelFileDescriptor? = null
-    private var outputUri: Uri? = null
+    private var tempFile: File? = null
     private var videoTrackIndex = -1
     private var audioTrackIndex = -1
     private var muxerStarted = false
@@ -118,12 +118,51 @@ class ProcamEngine(
         }
     }
 
+    fun open(cameraManager: CameraManager, surface: Surface) {
+        if (isOpening) return
+        if (cameraDevice != null && previewSurface === surface) {
+            return
+        }
+        isOpening = true
+        ensureThread()
+        previewSurface = surface
+
+        if (cameraDevice != null) {
+            isOpening = false
+            createSession()
+            return
+        }
+
+        try {
+            @Suppress("MissingPermission")
+            cameraManager.openCamera(CAMERA_ID, object : CameraDevice.StateCallback() {
+                override fun onOpened(camera: CameraDevice) {
+                    isOpening = false
+                    cameraDevice = camera
+                    createSession()
+                }
+                override fun onDisconnected(camera: CameraDevice) {
+                    isOpening = false
+                    camera.close(); cameraDevice = null
+                    emit { copy(isOpen = false, error = "Camera disconnected") }
+                }
+                override fun onError(camera: CameraDevice, error: Int) {
+                    isOpening = false
+                    camera.close(); cameraDevice = null
+                    emit { copy(isOpen = false, error = "Camera error $error") }
+                }
+            }, bgHandler)
+        } catch (t: Throwable) {
+            isOpening = false
+            Log.e(TAG, "open failed", t)
+            emit { copy(error = t.message) }
+        }
+    }
+
     fun attachSurface(surface: Surface) {
         ensureThread()
         previewSurface = surface
         if (cameraDevice != null) {
-            try { session?.close() } catch (_: Throwable) {}
-            session = null
             createSession()
         }
     }
@@ -132,38 +171,18 @@ class ProcamEngine(
         previewSurface = null
     }
 
-    fun open(cameraManager: CameraManager, surface: Surface) {
-        ensureThread()
-        previewSurface = surface
-        if (cameraDevice != null) {
-            createSession()
-            return
-        }
-        try {
-            @Suppress("MissingPermission")
-            cameraManager.openCamera(CAMERA_ID, object : CameraDevice.StateCallback() {
-                override fun onOpened(camera: CameraDevice) {
-                    cameraDevice = camera
-                    createSession()
-                }
-                override fun onDisconnected(camera: CameraDevice) {
-                    camera.close(); cameraDevice = null
-                    emit { copy(isOpen = false, error = "Camera disconnected") }
-                }
-                override fun onError(camera: CameraDevice, error: Int) {
-                    camera.close(); cameraDevice = null
-                    emit { copy(isOpen = false, error = "Camera error $error") }
-                }
-            }, bgHandler)
-        } catch (t: Throwable) {
-            Log.e(TAG, "open failed", t)
-            emit { copy(error = t.message) }
-        }
+    private fun closeCurrentSession() {
+        try { session?.stopRepeating() } catch (_: Throwable) {}
+        try { session?.abortCaptures() } catch (_: Throwable) {}
+        try { session?.close() } catch (_: Throwable) {}
+        session = null
     }
 
     private fun createSession() {
         val device = cameraDevice ?: return
         val preview = previewSurface ?: return
+
+        closeCurrentSession()
 
         try {
             requestBuilder = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
@@ -199,31 +218,11 @@ class ProcamEngine(
         val preview = previewSurface ?: return
 
         try {
-            val resolver = context.contentResolver
-            val displayName = "PROCAM_${System.currentTimeMillis()}.mp4"
-            val values = ContentValues().apply {
-                put(MediaStore.Video.Media.DISPLAY_NAME, displayName)
-                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/Procam")
-                    put(MediaStore.Video.Media.IS_PENDING, 1)
-                }
-            }
-            val uri = resolver.insert(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                values
-            ) ?: run {
-                emit { copy(error = "MediaStore insert failed") }
-                return
-            }
-            val descriptor = resolver.openFileDescriptor(uri, "w") ?: run {
-                resolver.delete(uri, null, null)
-                emit { copy(error = "FileDescriptor open failed") }
-                return
-            }
-
-            outputUri = uri
-            pfd = descriptor
+            val file = File(
+                context.cacheDir,
+                "procam_rec_${System.currentTimeMillis()}.mp4"
+            )
+            tempFile = file
 
             val videoFormat = MediaFormat.createVideoFormat(
                 settings.codec, settings.width, settings.height
@@ -258,12 +257,14 @@ class ProcamEngine(
             }
 
             muxer = MediaMuxer(
-                descriptor.fileDescriptor,
+                file.absolutePath,
                 MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
             )
             videoTrackIndex = -1
             audioTrackIndex = -1
             muxerStarted = false
+
+            closeCurrentSession()
 
             @Suppress("DEPRECATION")
             device.createCaptureSession(
@@ -297,7 +298,9 @@ class ProcamEngine(
                     }
 
                     override fun onConfigureFailed(s: CameraCaptureSession) {
+                        Log.e(TAG, "Record session configure failed")
                         emit { copy(error = "Record session config failed") }
+                        cleanupRecording()
                     }
                 },
                 bgHandler
@@ -369,11 +372,11 @@ class ProcamEngine(
         val mux = muxer ?: return
         if (!muxerStarted) {
             if (videoTrackIndex < 0) {
-                val f = videoEncoder!!.outputFormat
+                val f = videoEncoder?.outputFormat ?: return
                 videoTrackIndex = mux.addTrack(f)
             }
             if (audioTrackIndex < 0) {
-                val f = audioEncoder!!.outputFormat
+                val f = audioEncoder?.outputFormat ?: return
                 audioTrackIndex = mux.addTrack(f)
             }
             if (videoTrackIndex >= 0 && audioTrackIndex >= 0) {
@@ -383,7 +386,11 @@ class ProcamEngine(
         }
         val track = if (isVideo) videoTrackIndex else audioTrackIndex
         if (track < 0) return
-        mux.writeSampleData(track, buf, info)
+        try {
+            mux.writeSampleData(track, buf, info)
+        } catch (t: Throwable) {
+            Log.e(TAG, "writeSampleData", t)
+        }
     }
 
     private fun startAudioCapture() {
@@ -449,50 +456,51 @@ class ProcamEngine(
 
     fun stopRecording() {
         if (!state.isRecording) return
-        val uri = outputUri
+        val savedFile = tempFile
+
         try {
             audioRecording = false
             audioThread?.join(500)
             audioThread = null
-            audioRecord?.stop()
-            audioRecord?.release()
+            try { audioRecord?.stop() } catch (_: Throwable) {}
+            try { audioRecord?.release() } catch (_: Throwable) {}
             audioRecord = null
 
-            videoEncoder?.signalEndOfInputStream()
+            try { videoEncoder?.signalEndOfInputStream() } catch (_: Throwable) {}
+
+            Thread.sleep(300)
 
             val ve = videoEncoder
             videoEncoder = null
             try { ve?.stop() } catch (_: Throwable) {}
-            ve?.release()
+            try { ve?.release() } catch (_: Throwable) {}
 
             val ae = audioEncoder
             audioEncoder = null
             try { ae?.stop() } catch (_: Throwable) {}
-            ae?.release()
+            try { ae?.release() } catch (_: Throwable) {}
 
+            var savedUri: Uri? = null
             try {
                 if (muxerStarted) muxer?.stop()
-            } catch (_: Throwable) {}
-            muxer?.release()
-            muxer = null
-            muxerStarted = false
+                muxer?.release()
+                muxer = null
+                muxerStarted = false
+
+                if (savedFile != null && savedFile.exists() && savedFile.length() > 0) {
+                    savedUri = copyToGallery(savedFile)
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "muxer stop failed", t)
+                try { muxer?.release() } catch (_: Throwable) {}
+                muxer = null
+            }
+
             videoTrackIndex = -1
             audioTrackIndex = -1
 
-            videoInputSurface?.release()
+            try { videoInputSurface?.release() } catch (_: Throwable) {}
             videoInputSurface = null
-
-            try { pfd?.close() } catch (_: Throwable) {}
-            pfd = null
-
-            if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                try {
-                    val values = ContentValues().apply {
-                        put(MediaStore.Video.Media.IS_PENDING, 0)
-                    }
-                    context.contentResolver.update(uri, values, null, null)
-                } catch (_: Throwable) {}
-            }
 
             emit {
                 copy(
@@ -500,21 +508,18 @@ class ProcamEngine(
                     durationMs = 0L,
                     audioLevelL = 0f,
                     audioLevelR = 0f,
-                    lastUri = uri
+                    lastUri = savedUri
                 )
             }
-            outputUri = null
 
-            cameraDevice?.let {
-                try { session?.close() } catch (_: Throwable) {}
-                session = null
+            savedFile?.delete()
+            tempFile = null
+
+            if (cameraDevice != null && previewSurface != null) {
                 createSession()
             }
         } catch (t: Throwable) {
             Log.e(TAG, "stopRecording", t)
-            if (uri != null) {
-                try { context.contentResolver.delete(uri, null, null) } catch (_: Throwable) {}
-            }
             cleanupRecording()
             emit { copy(isRecording = false, durationMs = 0L) }
         }
@@ -533,13 +538,49 @@ class ProcamEngine(
         audioEncoder = null
         try { muxer?.release() } catch (_: Throwable) {}
         muxer = null
-        try { pfd?.close() } catch (_: Throwable) {}
-        pfd = null
         try { videoInputSurface?.release() } catch (_: Throwable) {}
         videoInputSurface = null
         muxerStarted = false
         videoTrackIndex = -1
         audioTrackIndex = -1
+        try { tempFile?.delete() } catch (_: Throwable) {}
+        tempFile = null
+    }
+
+    private fun copyToGallery(file: File): Uri? {
+        return try {
+            val values = ContentValues().apply {
+                put(MediaStore.Video.Media.DISPLAY_NAME, "PROCAM_${System.currentTimeMillis()}.mp4")
+                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/Procam")
+                    put(MediaStore.Video.Media.IS_PENDING, 1)
+                }
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
+                ?: return null
+
+            resolver.openOutputStream(uri)?.use { out ->
+                file.inputStream().use { input ->
+                    input.copyTo(out)
+                }
+            } ?: run {
+                resolver.delete(uri, null, null)
+                return null
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val update = ContentValues().apply {
+                    put(MediaStore.Video.Media.IS_PENDING, 0)
+                }
+                resolver.update(uri, update, null, null)
+            }
+            uri
+        } catch (t: Throwable) {
+            Log.e(TAG, "copyToGallery failed", t)
+            null
+        }
     }
 
     private fun startTimer() {
@@ -557,8 +598,7 @@ class ProcamEngine(
     fun close() {
         try {
             if (state.isRecording) stopRecording()
-            try { session?.close() } catch (_: Throwable) {}
-            session = null
+            closeCurrentSession()
             cameraDevice?.close(); cameraDevice = null
             bgThread?.quitSafely(); bgThread = null
             bgHandler = null
