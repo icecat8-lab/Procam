@@ -24,19 +24,10 @@ class GlPreviewRenderer(
             attribute vec2 aTexCoord;
             uniform mat4 uTexMatrix;
             uniform vec2 uScale;
-            uniform float uRotation;
             varying vec2 vTexCoord;
             void main() {
                 gl_Position = vec4(aPosition.x * uScale.x, aPosition.y * uScale.y, aPosition.z, aPosition.w);
-                vec2 tc = (uTexMatrix * vec4(aTexCoord, 0.0, 1.0)).xy;
-                if (uRotation > 45.0 && uRotation < 135.0) {
-                    tc = vec2(tc.y, 1.0 - tc.x);
-                } else if (uRotation > 135.0 && uRotation < 225.0) {
-                    tc = vec2(1.0 - tc.x, 1.0 - tc.y);
-                } else if (uRotation > 225.0 && uRotation < 315.0) {
-                    tc = vec2(1.0 - tc.y, tc.x);
-                }
-                vTexCoord = tc;
+                vTexCoord = (uTexMatrix * vec4(aTexCoord, 0.0, 1.0)).xy;
             }
         """
 
@@ -94,7 +85,6 @@ class GlPreviewRenderer(
     var saturation: Float = 1f
     var temperature: Float = 0f
 
-    @Volatile private var rotationDegrees: Float = sensorOrientation.toFloat()
     @Volatile private var scaleX: Float = 1f
     @Volatile private var scaleY: Float = 1f
 
@@ -113,7 +103,6 @@ class GlPreviewRenderer(
     private var uSaturation = 0
     private var uTemperature = 0
     private var uScale = 0
-    private var uRotation = 0
 
     private var externalTextureId = 0
     private var surfaceTexture: SurfaceTexture? = null
@@ -156,19 +145,14 @@ class GlPreviewRenderer(
 
     fun setViewSize(viewWidth: Int, viewHeight: Int) {
         if (viewWidth <= 0 || viewHeight <= 0) return
-        val rotated = rotationDegrees.toInt() == 90 || rotationDegrees.toInt() == 270
-        val camAspect = if (rotated) {
-            bufferHeight.toFloat() / bufferWidth.toFloat()
-        } else {
-            bufferWidth.toFloat() / bufferHeight.toFloat()
-        }
+        val camAspect = bufferWidth.toFloat() / bufferHeight.toFloat()
         val viewAspect = viewWidth.toFloat() / viewHeight.toFloat()
-        if (camAspect > viewAspect) {
-            scaleX = viewAspect / camAspect
+        if (viewAspect > camAspect) {
+            scaleX = camAspect / viewAspect
             scaleY = 1f
         } else {
             scaleX = 1f
-            scaleY = camAspect / viewAspect
+            scaleY = viewAspect / camAspect
         }
     }
 
@@ -190,7 +174,6 @@ class GlPreviewRenderer(
         uSaturation = GLES20.glGetUniformLocation(program, "uSaturation")
         uTemperature = GLES20.glGetUniformLocation(program, "uTemperature")
         uScale = GLES20.glGetUniformLocation(program, "uScale")
-        uRotation = GLES20.glGetUniformLocation(program, "uRotation")
 
         val texIds = IntArray(1)
         GLES20.glGenTextures(1, texIds, 0)
@@ -245,7 +228,6 @@ class GlPreviewRenderer(
         GLES20.glUniform1f(uSaturation, saturation)
         GLES20.glUniform1f(uTemperature, temperature)
         GLES20.glUniform2f(uScale, scaleX, scaleY)
-        GLES20.glUniform1f(uRotation, rotationDegrees)
 
         GLES20.glUniformMatrix4fv(uTexMatrix, 1, false, texMatrix, 0)
 
