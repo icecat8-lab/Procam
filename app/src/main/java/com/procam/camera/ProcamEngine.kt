@@ -71,8 +71,11 @@ class ProcamEngine(
     private var audioTrackIndex = -1
     private var muxerStarted = false
 
-    private var audioThread: Thread? = null
+    @Volatile private var drainVideoRunning = false
+    @Volatile private var drainAudioRunning = false
     @Volatile private var audioRecording = false
+    private var audioThread: Thread? = null
+    private var videoThread: Thread? = null
     private var startTimeMs = 0L
 
     private var minEvIndex = 0
@@ -185,7 +188,7 @@ class ProcamEngine(
     fun attachSurface(surface: Surface) {
         ensureThread()
         previewSurface = surface
-        if (cameraDevice != null) {
+        if (cameraDevice != null && !state.isRecording) {
             createSession()
         }
     }
@@ -207,32 +210,34 @@ class ProcamEngine(
         val evFloat = currentEvIndex * evStep
         emit { copy(ev = evFloat) }
 
-        try {
-            val device = cameraDevice ?: return
-            val preview = previewSurface ?: return
-            if (state.isRecording) {
-                val videoSurface = videoInputSurface ?: return
-                val rb = device.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
-                    addTarget(preview)
-                    addTarget(videoSurface)
-                    set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-                    set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-                    set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-                    set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
+        bgHandler?.post {
+            try {
+                val device = cameraDevice ?: return@post
+                val preview = previewSurface ?: return@post
+                if (state.isRecording) {
+                    val videoSurface = videoInputSurface ?: return@post
+                    val rb = device.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
+                        addTarget(preview)
+                        addTarget(videoSurface)
+                        set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                        set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                        set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+                        set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
+                    }
+                    session?.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
+                } else {
+                    val rb = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                        addTarget(preview)
+                        set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                        set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                        set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+                        set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
+                    }
+                    session?.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
                 }
-                session?.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
-            } else {
-                val rb = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                    addTarget(preview)
-                    set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-                    set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-                    set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-                    set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
-                }
-                session?.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
+            } catch (t: Throwable) {
+                Log.e(TAG, "setEv failed", t)
             }
-        } catch (t: Throwable) {
-            Log.e(TAG, "setEv failed", t)
         }
     }
 
@@ -280,6 +285,10 @@ class ProcamEngine(
 
     fun startRecording(settings: VideoSettings) {
         if (state.isRecording) return
+        bgHandler?.post { startRecordingInternal(settings) }
+    }
+
+    private fun startRecordingInternal(settings: VideoSettings) {
         val device = cameraDevice ?: return
         val preview = previewSurface ?: return
 
@@ -340,6 +349,7 @@ class ProcamEngine(
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(s: CameraCaptureSession) {
                         session = s
+
                         val rb = device.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
                             addTarget(preview)
                             addTarget(videoSurface)
@@ -352,14 +362,22 @@ class ProcamEngine(
                             set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
                             set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
                         }
+
                         try {
-                            s.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
-                            Thread.sleep(100)
-                            startEncoderThreads()
-                            audioRecording = true
-                            startAudioCapture()
-                            startTimeMs = System.currentTimeMillis()
                             emit { copy(isRecording = true, durationMs = 0L, error = null) }
+
+                            drainVideoRunning = true
+                            drainAudioRunning = true
+                            audioRecording = true
+
+                            videoThread = Thread { drainVideo() }.also { it.start() }
+                            audioThread = Thread { drainAudio() }.also { it.start() }
+
+                            startAudioCapture()
+
+                            s.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
+
+                            startTimeMs = System.currentTimeMillis()
                             startTimer()
                         } catch (t: Throwable) {
                             Log.e(TAG, "start repeating failed", t)
@@ -382,16 +400,11 @@ class ProcamEngine(
         }
     }
 
-    private fun startEncoderThreads() {
-        Thread { drainVideo() }.start()
-        Thread { drainAudio() }.start()
-    }
-
     private fun drainVideo() {
         val enc = videoEncoder ?: return
         val bufferInfo = MediaCodec.BufferInfo()
         try {
-            while (state.isRecording) {
+            while (drainVideoRunning) {
                 val outIdx = enc.dequeueOutputBuffer(bufferInfo, 10_000)
                 if (outIdx >= 0) {
                     val buf = enc.getOutputBuffer(outIdx)
@@ -403,18 +416,23 @@ class ProcamEngine(
                         writeSampleData(true, buf, bufferInfo)
                     }
                     enc.releaseOutputBuffer(outIdx, false)
+
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                        break
+                    }
                 }
             }
         } catch (t: Throwable) {
             Log.e(TAG, "drainVideo", t)
         }
+        drainVideoRunning = false
     }
 
     private fun drainAudio() {
         val enc = audioEncoder ?: return
         val bufferInfo = MediaCodec.BufferInfo()
         try {
-            while (audioRecording) {
+            while (drainAudioRunning) {
                 val outIdx = enc.dequeueOutputBuffer(bufferInfo, 10_000)
                 if (outIdx >= 0) {
                     val buf = enc.getOutputBuffer(outIdx)
@@ -426,11 +444,16 @@ class ProcamEngine(
                         writeSampleData(false, buf, bufferInfo)
                     }
                     enc.releaseOutputBuffer(outIdx, false)
+
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                        break
+                    }
                 }
             }
         } catch (t: Throwable) {
             Log.e(TAG, "drainAudio", t)
         }
+        drainAudioRunning = false
     }
 
     @Synchronized
@@ -481,7 +504,7 @@ class ProcamEngine(
         audioRecord = record
         record.startRecording()
 
-        audioThread = Thread {
+        Thread {
             val enc = audioEncoder ?: return@Thread
             val pcm = ByteArray(bufSize)
             while (audioRecording) {
@@ -521,82 +544,103 @@ class ProcamEngine(
                     enc.queueInputBuffer(inIdx, 0, read, System.nanoTime() / 1000, 0)
                 }
             }
-        }.also { it.start() }
+
+            try {
+                val inIdx = enc.dequeueInputBuffer(100_000)
+                if (inIdx >= 0) {
+                    enc.queueInputBuffer(
+                        inIdx, 0, 0,
+                        System.nanoTime() / 1000,
+                        MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                    )
+                }
+            } catch (_: Throwable) {}
+        }.also { audioThread = it }.start()
     }
 
     fun stopRecording() {
         if (!state.isRecording) return
+        bgHandler?.post { stopRecordingInternal() }
+    }
+
+    private fun stopRecordingInternal() {
+        if (!state.isRecording) return
+
+        emit { copy(isRecording = false, durationMs = 0L, audioLevelL = 0f, audioLevelR = 0f) }
+
+        try { session?.stopRepeating() } catch (_: Throwable) {}
+
+        try { videoEncoder?.signalEndOfInputStream() } catch (_: Throwable) {}
+
+        audioRecording = false
+
+        audioThread?.join(1500)
+
+        val videoWaitStart = System.currentTimeMillis()
+        while (drainVideoRunning && System.currentTimeMillis() - videoWaitStart < 2000) {
+            Thread.sleep(20)
+        }
+
+        val audioWaitStart = System.currentTimeMillis()
+        while (drainAudioRunning && System.currentTimeMillis() - audioWaitStart < 1000) {
+            Thread.sleep(20)
+        }
+
+        drainVideoRunning = false
+        drainAudioRunning = false
+
+        try { audioRecord?.stop() } catch (_: Throwable) {}
+        try { audioRecord?.release() } catch (_: Throwable) {}
+        audioRecord = null
+
+        val ve = videoEncoder
+        videoEncoder = null
+        try { ve?.stop() } catch (_: Throwable) {}
+        try { ve?.release() } catch (_: Throwable) {}
+
+        val ae = audioEncoder
+        audioEncoder = null
+        try { ae?.stop() } catch (_: Throwable) {}
+        try { ae?.release() } catch (_: Throwable) {}
+
+        var savedUri: Uri? = null
         val savedFile = tempFile
 
         try {
-            audioRecording = false
-            audioThread?.join(500)
-            audioThread = null
-            try { audioRecord?.stop() } catch (_: Throwable) {}
-            try { audioRecord?.release() } catch (_: Throwable) {}
-            audioRecord = null
+            if (muxerStarted) muxer?.stop()
+            muxer?.release()
+            muxer = null
+            muxerStarted = false
 
-            try { videoEncoder?.signalEndOfInputStream() } catch (_: Throwable) {}
-
-            Thread.sleep(400)
-
-            val ve = videoEncoder
-            videoEncoder = null
-            try { ve?.stop() } catch (_: Throwable) {}
-            try { ve?.release() } catch (_: Throwable) {}
-
-            val ae = audioEncoder
-            audioEncoder = null
-            try { ae?.stop() } catch (_: Throwable) {}
-            try { ae?.release() } catch (_: Throwable) {}
-
-            var savedUri: Uri? = null
-            try {
-                if (muxerStarted) muxer?.stop()
-                muxer?.release()
-                muxer = null
-                muxerStarted = false
-
-                if (savedFile != null && savedFile.exists() && savedFile.length() > 0) {
-                    savedUri = copyToGallery(savedFile)
-                }
-            } catch (t: Throwable) {
-                Log.e(TAG, "muxer stop failed", t)
-                try { muxer?.release() } catch (_: Throwable) {}
-                muxer = null
-            }
-
-            videoTrackIndex = -1
-            audioTrackIndex = -1
-
-            try { videoInputSurface?.release() } catch (_: Throwable) {}
-            videoInputSurface = null
-
-            emit {
-                copy(
-                    isRecording = false,
-                    durationMs = 0L,
-                    audioLevelL = 0f,
-                    audioLevelR = 0f,
-                    lastUri = savedUri
-                )
-            }
-
-            savedFile?.delete()
-            tempFile = null
-
-            if (cameraDevice != null && previewSurface != null) {
-                createSession()
+            if (savedFile != null && savedFile.exists() && savedFile.length() > 0) {
+                savedUri = copyToGallery(savedFile)
             }
         } catch (t: Throwable) {
-            Log.e(TAG, "stopRecording", t)
-            cleanupRecording()
-            emit { copy(isRecording = false, durationMs = 0L) }
+            Log.e(TAG, "muxer stop failed", t)
+            try { muxer?.release() } catch (_: Throwable) {}
+            muxer = null
+        }
+
+        videoTrackIndex = -1
+        audioTrackIndex = -1
+
+        try { videoInputSurface?.release() } catch (_: Throwable) {}
+        videoInputSurface = null
+
+        emit { copy(lastUri = savedUri) }
+
+        savedFile?.delete()
+        tempFile = null
+
+        if (cameraDevice != null && previewSurface != null) {
+            createSession()
         }
     }
 
     private fun cleanupRecording() {
-        try { audioRecording = false } catch (_: Throwable) {}
+        drainVideoRunning = false
+        drainAudioRunning = false
+        audioRecording = false
         try { audioRecord?.stop() } catch (_: Throwable) {}
         try { audioRecord?.release() } catch (_: Throwable) {}
         audioRecord = null
@@ -667,7 +711,9 @@ class ProcamEngine(
 
     fun close() {
         try {
-            if (state.isRecording) stopRecording()
+            if (state.isRecording) {
+                stopRecordingInternal()
+            }
             closeCurrentSession()
             cameraDevice?.close(); cameraDevice = null
             cameraManager = null
