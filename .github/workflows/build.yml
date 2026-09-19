@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 0.1.0)'
+        description: 'Release version (e.g. 1.0.0)'
         required: true
-        default: '0.1.0'
+        default: '1.0.0'
       create_release:
         description: 'Create GitHub Release with APK?'
         type: boolean
@@ -71,7 +71,7 @@ jobs:
 
             ### Features
             - Camera2 API video recording
-            - 1080p30 H.264 + AAC
+            - 4k60 H.264-H.265
             - Manual ISO / Shutter / WB
             - Multi-device support
           files: out/*.apk
