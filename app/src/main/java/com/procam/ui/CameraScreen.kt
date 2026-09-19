@@ -47,9 +47,11 @@ fun CameraScreen(hasPermission: Boolean) {
     var settings by remember { mutableStateOf(VideoSettings()) }
     var isGridOn by remember { mutableStateOf(false) }
     var previewSurface by remember { mutableStateOf<Surface?>(null) }
+    var isOpened by remember { mutableStateOf(false) }
 
     LaunchedEffect(hasPermission, previewSurface) {
-        if (hasPermission && previewSurface != null) {
+        if (hasPermission && previewSurface != null && !isOpened) {
+            isOpened = true
             val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
             engine.open(cm, previewSurface!!)
         }
@@ -60,7 +62,11 @@ fun CameraScreen(hasPermission: Boolean) {
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
                     engine.close()
+                    isOpened = false
                     previewSurface = null
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    isOpened = false
                 }
                 else -> {}
             }
