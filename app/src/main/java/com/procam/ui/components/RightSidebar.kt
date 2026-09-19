@@ -8,7 +8,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.GridOn
+import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,20 +33,24 @@ fun RightSidebar(
     isGridOn: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    Box(
         modifier = modifier
             .width(76.dp)
             .fillMaxHeight()
             .background(ProcamColors.PanelSoft)
-            .padding(vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Spacer(Modifier.height(48.dp))
+        // Record button — centered vertically and horizontally
+        RecordButton(
+            isRecording = isRecording,
+            onClick = onRecordToggle,
+            modifier = Modifier.align(Alignment.Center)
+        )
 
-        RecordButton(isRecording, onRecordToggle)
-
+        // Top spacer (invisible) to balance the bottom column height
         Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -83,9 +89,13 @@ private fun IconPill(
 }
 
 @Composable
-private fun RecordButton(isRecording: Boolean, onClick: () -> Unit) {
+private fun RecordButton(
+    isRecording: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(72.dp)
             .clip(CircleShape)
             .background(ProcamColors.Panel)
