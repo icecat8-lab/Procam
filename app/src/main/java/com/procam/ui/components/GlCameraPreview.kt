@@ -49,7 +49,8 @@ fun GlCameraPreview(
                             mainHandler.post { onSurfaceReady(surface) }
                         },
                         bufferWidth = previewInfo.width,
-                        bufferHeight = previewInfo.height
+                        bufferHeight = previewInfo.height,
+                        sensorOrientation = previewInfo.sensorOrientation
                     )
                     setRenderer(renderer)
                     renderer.bindGlSurfaceView(this)
