@@ -19,7 +19,7 @@ import com.procam.ui.theme.ProcamType
 fun TopStatusBar(
     timecode: String,
     shutter: String,
-    iris: String,
+    af: String,
     iso: Int,
     wb: String,
     ev: String,
@@ -46,7 +46,7 @@ fun TopStatusBar(
                 )
             }
             Stat("SHUTTER", shutter)
-            IrisStat(iris)
+            AfStat(af)
         }
 
         Spacer(Modifier.weight(1f))
@@ -75,9 +75,9 @@ private fun Stat(label: String, value: String) {
 }
 
 @Composable
-private fun IrisStat(value: String) {
+private fun AfStat(value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("IRIS", style = ProcamType.Label, textAlign = TextAlign.Center)
+        Text("AF", style = ProcamType.Label, textAlign = TextAlign.Center)
         Spacer(Modifier.height(2.dp))
         Text(
             value,
