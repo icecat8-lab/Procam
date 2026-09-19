@@ -1,17 +1,20 @@
 name: Build Procam
 
 on:
+  push:
+    branches: ["**"]
+  pull_request:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 1.0.0)'
+        description: "Version label for the APK artifact/release"
         required: true
-        default: '1.0.0'
+        default: "1.0.0"
       create_release:
-        description: 'Create GitHub Release with APK?'
+        description: "Create GitHub Release with the debug APK"
         type: boolean
         required: true
-        default: true
+        default: false
 
 permissions:
   contents: write
@@ -19,6 +22,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,21 +31,24 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: 8.7
+          gradle-version: "8.7"
 
-      - name: Build Debug APK
-        run: gradle :app:assembleDebug --no-daemon
+      - name: Check, test and build
+        run: |
+          gradle :app:lintDebug :app:testDebugUnitTest :app:assembleDebug --no-daemon
 
-      - name: Rename APK
+      - name: Prepare APK
         run: |
           mkdir -p out
           SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
-          cp "$SRC" "out/Procam-v${{ inputs.version }}.apk"
+          test -n "$SRC"
+          VERSION="${{ inputs.version || 'dev' }}"
+          cp "$SRC" "out/Procam-v${VERSION}.apk"
           ls -la out/
 
       - name: Upload Artifact
@@ -52,7 +59,7 @@ jobs:
           retention-days: 30
 
       - name: Create GitHub Release
-        if: ${{ inputs.create_release }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ inputs.version }}
@@ -60,20 +67,17 @@ jobs:
           body: |
             ## Procam v${{ inputs.version }}
 
-            **Build:** ${{ github.run_number }}
-            **Commit:** ${{ github.sha }}
-            **Date:** ${{ github.event.repository.updated_at }}
+            This artifact is a debug APK. A production release should be signed with the project's release signing configuration before distribution.
 
-            ### Install
-            1. Download `Procam-v${{ inputs.version }}.apk`
-            2. Enable "Install from unknown sources"
-            3. Tap APK to install
-
-            ### Features
-            - Camera2 API video recording
-            - 4k60 H.264-H.265
-            - Manual ISO / Shutter / WB
-            - Multi-device support
+            ### Implemented behavior
+            - Camera2 preview and recording
+            - H.265 when a compatible encoder/configuration exists, otherwise automatic H.264 fallback
+            - 30/60 fps requests with runtime fallback to a supported camera FPS
+            - Runtime validation of camera recording sizes and encoder capabilities
+            - AAC audio with timestamped audio/video muxing
+            - MediaStore save to Movies/Procam
+            - Correct MediaCodec output-format handling
+            - Safer recording shutdown and cleanup
           files: out/*.apk
           draft: false
           prerelease: false
