@@ -62,9 +62,6 @@ fun CameraScreen(hasPermission: Boolean) {
                     engine.close()
                     previewSurface = null
                 }
-                Lifecycle.Event.ON_RESUME -> {
-                    // engine.open จะ trigger ผ่าน LaunchedEffect อีกครั้ง
-                }
                 else -> {}
             }
         }
@@ -194,7 +191,7 @@ fun CameraScreen(hasPermission: Boolean) {
             TopStatusBar(
                 timecode = timecode,
                 shutter = formatShutter(engineState.shutterNs),
-                iris = "F1.8",
+                af = "AUTO",
                 iso = engineState.iso,
                 wb = if (engineState.wbKelvin > 0) "${engineState.wbKelvin}K" else "AUTO",
                 ev = evText,
