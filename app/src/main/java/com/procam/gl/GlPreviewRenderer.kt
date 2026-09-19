@@ -2,7 +2,7 @@ package com.procam.gl
 
 import android.graphics.SurfaceTexture
 import android.opengl.GLES11Ext
-import android.opengl.GLES20
+import android.opengl.GLES30
 import android.opengl.GLSurfaceView
 import android.view.Surface
 import java.nio.ByteBuffer
@@ -14,65 +14,66 @@ import javax.microedition.khronos.opengles.GL10
 class GlPreviewRenderer(
     private val onSurfaceReady: (Surface) -> Unit,
     private val bufferWidth: Int,
-    private val bufferHeight: Int,
-    private val sensorOrientation: Int
+    private val bufferHeight: Int
 ) : GLSurfaceView.Renderer, SurfaceTexture.OnFrameAvailableListener {
 
     companion object {
-        private const val VERTEX_SHADER = """
-            attribute vec4 aPosition;
-            attribute vec2 aTexCoord;
-            uniform mat4 uTexMatrix;
-            uniform vec2 uScale;
-            varying vec2 vTexCoord;
-            void main() {
-                gl_Position = vec4(aPosition.x * uScale.x, aPosition.y * uScale.y, aPosition.z, aPosition.w);
-                vTexCoord = (uTexMatrix * vec4(aTexCoord, 0.0, 1.0)).xy;
-            }
-        """
+        private const val VERTEX_SHADER = """#version 300 es
+in vec4 aPosition;
+in vec2 aTexCoord;
+uniform mat4 uTexMatrix;
+uniform vec2 uScale;
+out vec2 vTexCoord;
+void main() {
+    gl_Position = vec4(aPosition.x * uScale.x, aPosition.y * uScale.y, aPosition.z, aPosition.w);
+    vTexCoord = (uTexMatrix * vec4(aTexCoord, 0.0, 1.0)).xy;
+}
+"""
 
-        private const val FRAGMENT_SHADER = """
-            #extension GL_OES_EGL_image_external : require
-            precision mediump float;
-            varying vec2 vTexCoord;
-            uniform samplerExternalOES uTexture;
-            uniform float uLutEnabled;
-            uniform sampler2D uLut;
-            uniform float uLutSize;
-            uniform float uBrightness;
-            uniform float uContrast;
-            uniform float uSaturation;
-            uniform float uTemperature;
+        private const val FRAGMENT_SHADER = """#version 300 es
+#extension GL_OES_EGL_image_external_essl3 : require
+precision mediump float;
+precision mediump sampler2D;
+in vec2 vTexCoord;
+uniform samplerExternalOES uTexture;
+uniform sampler2D uLut;
+uniform float uLutEnabled;
+uniform float uLutSize;
+uniform float uBrightness;
+uniform float uContrast;
+uniform float uSaturation;
+uniform float uTemperature;
+out vec4 fragColor;
 
-            vec3 sampleLut(float r, float g, float b) {
-                float x = (b * uLutSize + r * (uLutSize - 1.0) + 0.5) / (uLutSize * uLutSize);
-                float y = (g * (uLutSize - 1.0) + 0.5) / uLutSize;
-                return texture2D(uLut, vec2(x, y)).rgb;
-            }
+vec3 sampleLut(float r, float g, float b) {
+    float x = (b * uLutSize + r * (uLutSize - 1.0) + 0.5) / (uLutSize * uLutSize);
+    float y = (g * (uLutSize - 1.0) + 0.5) / uLutSize;
+    return texture(uLut, vec2(x, y)).rgb;
+}
 
-            vec3 applyLut(vec3 c) {
-                float blue = c.b * (uLutSize - 1.0);
-                float b0 = floor(blue);
-                float b1 = min(b0 + 1.0, uLutSize - 1.0);
-                float bf = fract(blue);
-                vec3 c0 = sampleLut(c.r, c.g, b0);
-                vec3 c1 = sampleLut(c.r, c.g, b1);
-                return mix(c0, c1, bf);
-            }
+vec3 applyLut(vec3 c) {
+    float blue = c.b * (uLutSize - 1.0);
+    float b0 = floor(blue);
+    float b1 = min(b0 + 1.0, uLutSize - 1.0);
+    float bf = fract(blue);
+    vec3 c0 = sampleLut(c.r, c.g, b0);
+    vec3 c1 = sampleLut(c.r, c.g, b1);
+    return mix(c0, c1, bf);
+}
 
-            void main() {
-                vec3 color = texture2D(uTexture, vTexCoord).rgb;
-                color = (color - 0.5) * uContrast + 0.5 + uBrightness;
-                float lum = dot(color, vec3(0.2126, 0.7152, 0.0722));
-                color = mix(vec3(lum), color, uSaturation);
-                color.r += uTemperature * 0.05;
-                color.b -= uTemperature * 0.05;
-                if (uLutEnabled > 0.5 && uLutSize > 0.0) {
-                    color = applyLut(clamp(color, 0.0, 1.0));
-                }
-                gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
-            }
-        """
+void main() {
+    vec3 color = texture(uTexture, vTexCoord).rgb;
+    color = (color - 0.5) * uContrast + 0.5 + uBrightness;
+    float lum = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    color = mix(vec3(lum), color, uSaturation);
+    color.r += uTemperature * 0.05;
+    color.b -= uTemperature * 0.05;
+    if (uLutEnabled > 0.5 && uLutSize > 0.0) {
+        color = applyLut(clamp(color, 0.0, 1.0));
+    }
+    fragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+}
+"""
 
         private const val FLOAT_SIZE = 4
     }
@@ -95,8 +96,8 @@ class GlPreviewRenderer(
     private var aTexCoord = 0
     private var uTexMatrix = 0
     private var uTexture = 0
-    private var uLutEnabled = 0
     private var uLut = 0
+    private var uLutEnabled = 0
     private var uLutSize = 0
     private var uBrightness = 0
     private var uContrast = 0
@@ -162,27 +163,31 @@ class GlPreviewRenderer(
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
-        aPosition = GLES20.glGetAttribLocation(program, "aPosition")
-        aTexCoord = GLES20.glGetAttribLocation(program, "aTexCoord")
-        uTexMatrix = GLES20.glGetUniformLocation(program, "uTexMatrix")
-        uTexture = GLES20.glGetUniformLocation(program, "uTexture")
-        uLutEnabled = GLES20.glGetUniformLocation(program, "uLutEnabled")
-        uLut = GLES20.glGetUniformLocation(program, "uLut")
-        uLutSize = GLES20.glGetUniformLocation(program, "uLutSize")
-        uBrightness = GLES20.glGetUniformLocation(program, "uBrightness")
-        uContrast = GLES20.glGetUniformLocation(program, "uContrast")
-        uSaturation = GLES20.glGetUniformLocation(program, "uSaturation")
-        uTemperature = GLES20.glGetUniformLocation(program, "uTemperature")
-        uScale = GLES20.glGetUniformLocation(program, "uScale")
+        if (program == 0) {
+            return
+        }
+
+        aPosition = GLES30.glGetAttribLocation(program, "aPosition")
+        aTexCoord = GLES30.glGetAttribLocation(program, "aTexCoord")
+        uTexMatrix = GLES30.glGetUniformLocation(program, "uTexMatrix")
+        uTexture = GLES30.glGetUniformLocation(program, "uTexture")
+        uLut = GLES30.glGetUniformLocation(program, "uLut")
+        uLutEnabled = GLES30.glGetUniformLocation(program, "uLutEnabled")
+        uLutSize = GLES30.glGetUniformLocation(program, "uLutSize")
+        uBrightness = GLES30.glGetUniformLocation(program, "uBrightness")
+        uContrast = GLES30.glGetUniformLocation(program, "uContrast")
+        uSaturation = GLES30.glGetUniformLocation(program, "uSaturation")
+        uTemperature = GLES30.glGetUniformLocation(program, "uTemperature")
+        uScale = GLES30.glGetUniformLocation(program, "uScale")
 
         val texIds = IntArray(1)
-        GLES20.glGenTextures(1, texIds, 0)
+        GLES30.glGenTextures(1, texIds, 0)
         externalTextureId = texIds[0]
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, externalTextureId)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+        GLES30.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, externalTextureId)
+        GLES30.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+        GLES30.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+        GLES30.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
+        GLES30.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
 
         val st = SurfaceTexture(externalTextureId)
         st.setDefaultBufferSize(bufferWidth, bufferHeight)
@@ -191,18 +196,18 @@ class GlPreviewRenderer(
         val surf = Surface(st)
         cameraSurface = surf
 
-        GLES20.glClearColor(0f, 0f, 0f, 1f)
+        GLES30.glClearColor(0f, 0f, 0f, 1f)
 
         onSurfaceReady(surf)
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-        GLES20.glViewport(0, 0, width, height)
+        GLES30.glViewport(0, 0, width, height)
         setViewSize(width, height)
     }
 
     override fun onDrawFrame(gl: GL10?) {
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+        GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
         val st = surfaceTexture ?: return
         try {
             st.updateTexImage()
@@ -211,35 +216,35 @@ class GlPreviewRenderer(
             return
         }
 
-        GLES20.glUseProgram(program)
+        GLES30.glUseProgram(program)
 
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, externalTextureId)
-        GLES20.glUniform1i(uTexture, 0)
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+        GLES30.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, externalTextureId)
+        GLES30.glUniform1i(uTexture, 0)
 
-        GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, lutTextureId)
-        GLES20.glUniform1i(uLut, 1)
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE1)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, lutTextureId)
+        GLES30.glUniform1i(uLut, 1)
 
-        GLES20.glUniform1f(uLutEnabled, if (lutEnabled && lutTextureId != 0) 1f else 0f)
-        GLES20.glUniform1f(uLutSize, if (lutSize > 0f) lutSize else 1f)
-        GLES20.glUniform1f(uBrightness, brightness)
-        GLES20.glUniform1f(uContrast, contrast)
-        GLES20.glUniform1f(uSaturation, saturation)
-        GLES20.glUniform1f(uTemperature, temperature)
-        GLES20.glUniform2f(uScale, scaleX, scaleY)
+        GLES30.glUniform1f(uLutEnabled, if (lutEnabled && lutTextureId != 0) 1f else 0f)
+        GLES30.glUniform1f(uLutSize, if (lutSize > 0f) lutSize else 1f)
+        GLES30.glUniform1f(uBrightness, brightness)
+        GLES30.glUniform1f(uContrast, contrast)
+        GLES30.glUniform1f(uSaturation, saturation)
+        GLES30.glUniform1f(uTemperature, temperature)
+        GLES30.glUniform2f(uScale, scaleX, scaleY)
 
-        GLES20.glUniformMatrix4fv(uTexMatrix, 1, false, texMatrix, 0)
+        GLES30.glUniformMatrix4fv(uTexMatrix, 1, false, texMatrix, 0)
 
-        GLES20.glEnableVertexAttribArray(aPosition)
-        GLES20.glVertexAttribPointer(aPosition, 4, GLES20.GL_FLOAT, false, 0, vertices)
-        GLES20.glEnableVertexAttribArray(aTexCoord)
-        GLES20.glVertexAttribPointer(aTexCoord, 2, GLES20.GL_FLOAT, false, 0, texCoords)
+        GLES30.glEnableVertexAttribArray(aPosition)
+        GLES30.glVertexAttribPointer(aPosition, 4, GLES30.GL_FLOAT, false, 0, vertices)
+        GLES30.glEnableVertexAttribArray(aTexCoord)
+        GLES30.glVertexAttribPointer(aTexCoord, 2, GLES30.GL_FLOAT, false, 0, texCoords)
 
-        GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)
 
-        GLES20.glDisableVertexAttribArray(aPosition)
-        GLES20.glDisableVertexAttribArray(aTexCoord)
+        GLES30.glDisableVertexAttribArray(aPosition)
+        GLES30.glDisableVertexAttribArray(aTexCoord)
     }
 
     fun release() {
@@ -249,28 +254,46 @@ class GlPreviewRenderer(
         try { cameraSurface?.release() } catch (_: Throwable) {}
         cameraSurface = null
         if (program != 0) {
-            GLES20.glDeleteProgram(program)
+            GLES30.glDeleteProgram(program)
             program = 0
         }
         glSurfaceView = null
     }
 
     private fun createProgram(vs: String, fs: String): Int {
-        val v = loadShader(GLES20.GL_VERTEX_SHADER, vs)
-        val f = loadShader(GLES20.GL_FRAGMENT_SHADER, fs)
-        val p = GLES20.glCreateProgram()
-        GLES20.glAttachShader(p, v)
-        GLES20.glAttachShader(p, f)
-        GLES20.glLinkProgram(p)
-        GLES20.glDeleteShader(v)
-        GLES20.glDeleteShader(f)
+        val v = loadShader(GLES30.GL_VERTEX_SHADER, vs)
+        if (v == 0) return 0
+        val f = loadShader(GLES30.GL_FRAGMENT_SHADER, fs)
+        if (f == 0) {
+            GLES30.glDeleteShader(v)
+            return 0
+        }
+        val p = GLES30.glCreateProgram()
+        GLES30.glAttachShader(p, v)
+        GLES30.glAttachShader(p, f)
+        GLES30.glLinkProgram(p)
+
+        val status = IntArray(1)
+        GLES30.glGetProgramiv(p, GLES30.GL_LINK_STATUS, status, 0)
+        GLES30.glDeleteShader(v)
+        GLES30.glDeleteShader(f)
+        if (status[0] == 0) {
+            GLES30.glDeleteProgram(p)
+            return 0
+        }
         return p
     }
 
     private fun loadShader(type: Int, src: String): Int {
-        val s = GLES20.glCreateShader(type)
-        GLES20.glShaderSource(s, src)
-        GLES20.glCompileShader(s)
+        val s = GLES30.glCreateShader(type)
+        GLES30.glShaderSource(s, src)
+        GLES30.glCompileShader(s)
+        val status = IntArray(1)
+        GLES30.glGetShaderiv(s, GLES30.GL_COMPILE_STATUS, status, 0)
+        if (status[0] == 0) {
+            GLES30.glDeleteShader(s)
+            return 0
+        }
         return s
     }
 }
