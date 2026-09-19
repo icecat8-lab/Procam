@@ -39,14 +39,12 @@ fun RightSidebar(
             .fillMaxHeight()
             .background(ProcamColors.PanelSoft)
     ) {
-        // Record button — centered vertically and horizontally
         RecordButton(
             isRecording = isRecording,
             onClick = onRecordToggle,
             modifier = Modifier.align(Alignment.Center)
         )
 
-        // Top spacer (invisible) to balance the bottom column height
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -54,7 +52,7 @@ fun RightSidebar(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            IconPill(Icons.Outlined.GridOn, "Grid", isGridOn, onToggleGrid)
+            IconPill(Icons.Outlined.GridOn, "3×3", isGridOn, onToggleGrid)
             IconPill(Icons.Outlined.PhotoLibrary, "Media", false, onOpenGallery)
             IconPill(Icons.Outlined.MoreHoriz, "More", false, onOpenMore)
         }
