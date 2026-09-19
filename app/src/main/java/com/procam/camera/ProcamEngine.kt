@@ -2,7 +2,6 @@ package com.procam.camera
 
 import android.content.ContentValues
 import android.content.Context
-import android.graphics.ImageFormat
 import android.hardware.camera2.*
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
@@ -105,38 +104,59 @@ class ProcamEngine(
             val shutter = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
 
             var kelvin = 0
-            var tint = 0
 
-            val cct = result.get(CaptureResult.COLOR_CORRECTION_COLOR_TEMPERATURE)
-            val cctTint = result.get(CaptureResult.COLOR_CORRECTION_COLOR_TINT)
-            if (cct != null && cct in 1000..20000) {
-                kelvin = cct
-                tint = cctTint ?: 0
-            } else {
-                val gains = result.get(CaptureResult.COLOR_CORRECTION_GAINS)
-                if (gains != null) {
-                    kelvin = gainsToKelvin(gains.red, (gains.greenEven + gains.greenOdd) / 2f, gains.blue)
+            val neutralPoint = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT)
+            if (neutralPoint != null && neutralPoint.size >= 3) {
+                val r = neutralPoint[0].toFloat()
+                val g = neutralPoint[1].toFloat()
+                val b = neutralPoint[2].toFloat()
+                if (r > 0.001f && g > 0.001f && b > 0.001f) {
+                    kelvin = rgbToKelvin(r, g, b)
                 }
             }
 
-            if (iso != state.iso || shutter != state.shutterNs ||
-                kelvin != state.wbKelvin || tint != state.wbTint
-            ) {
-                emit { copy(iso = iso, shutterNs = shutter, wbKelvin = kelvin, wbTint = tint) }
+            if (kelvin == 0) {
+                val gains = result.get(CaptureResult.COLOR_CORRECTION_GAINS)
+                if (gains != null) {
+                    kelvin = gainsToKelvin(
+                        gains.red,
+                        (gains.greenEven + gains.greenOdd) / 2f,
+                        gains.blue
+                    )
+                }
+            }
+
+            if (iso != state.iso || shutter != state.shutterNs || kelvin != state.wbKelvin) {
+                emit { copy(iso = iso, shutterNs = shutter, wbKelvin = kelvin) }
             }
         }
     }
 
+    private fun rgbToKelvin(r: Float, g: Float, b: Float): Int {
+        val total = r + g + b
+        if (total <= 0.001f) return 0
+        val rn = r / total
+        val bn = b / total
+        if (rn <= 0.001f || bn <= 0.001f) return 0
+        val ratio = rn / bn
+        return ratioToKelvin(ratio.toDouble())
+    }
+
     private fun gainsToKelvin(r: Float, g: Float, b: Float): Int {
         if (r <= 0.001f || b <= 0.001f || g <= 0.001f) return 0
-        val rb = r / b
-        if (rb <= 0.001f) return 0
-        val logRb = ln(rb.toDouble())
+        val ratio = (r / b).toDouble()
+        return ratioToKelvin(ratio)
+    }
+
+    private fun ratioToKelvin(ratio: Double): Int {
+        if (ratio <= 0.001) return 0
+        val logRb = ln(ratio)
         val kelvin = 6490.0 * Math.pow(logRb, 3.0) -
             3_520_000.0 * Math.pow(logRb, 2.0) +
             6_824_000.0 * logRb +
             5_663_000.0
-        val normalized = (kelvin / 100.0).toInt() * 100
+        if (kelvin.isNaN() || kelvin.isInfinite()) return 0
+        val normalized = (kelvin / 100.0).roundToInt() * 100
         return normalized.coerceIn(2000, 12000)
     }
 
@@ -229,6 +249,10 @@ class ProcamEngine(
             set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
             set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
             set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
+            set(
+                CaptureRequest.CONTROL_AE_ANTIBANDING_MODE,
+                CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO
+            )
         }.build()
     }
 
@@ -254,7 +278,11 @@ class ProcamEngine(
                     }
                     session?.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
                 } else {
-                    session?.setRepeatingRequest(buildPreviewRequest(device, preview), captureCallback, bgHandler)
+                    session?.setRepeatingRequest(
+                        buildPreviewRequest(device, preview),
+                        captureCallback,
+                        bgHandler
+                    )
                 }
             } catch (t: Throwable) {
                 Log.e(TAG, "setEv failed", t)
@@ -300,8 +328,7 @@ class ProcamEngine(
             )
 
             val keys = try {
-                cameraManager?.getCameraCharacteristics(CAMERA_ID)
-                    ?.availableSessionKeys
+                cameraManager?.getCameraCharacteristics(CAMERA_ID)?.availableSessionKeys
             } catch (_: Throwable) { null }
 
             if (keys != null && keys.isNotEmpty()) {
@@ -442,14 +469,16 @@ class ProcamEngine(
             )
 
             val keys = try {
-                cameraManager?.getCameraCharacteristics(CAMERA_ID)
-                    ?.availableSessionKeys
+                cameraManager?.getCameraCharacteristics(CAMERA_ID)?.availableSessionKeys
             } catch (_: Throwable) { null }
 
             if (keys != null && keys.isNotEmpty()) {
                 try {
                     val params = device.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
-                        set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(settings.fps, settings.fps))
+                        set(
+                            CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                            Range(settings.fps, settings.fps)
+                        )
                         set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
                         set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                         set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
