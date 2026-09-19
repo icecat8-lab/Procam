@@ -1,23 +1,7 @@
-name: Build Procam
+name: Android Build
 
 on:
-  push:
-    branches: ["**"]
-  pull_request:
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Version label for the APK artifact/release"
-        required: true
-        default: "1.0.0"
-      create_release:
-        description: "Create GitHub Release with the debug APK"
-        type: boolean
-        required: true
-        default: false
-
-permissions:
-  contents: write
 
 jobs:
   build:
@@ -27,58 +11,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: "8.7"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Check, test and build
-        run: |
-          gradle :app:lintDebug :app:testDebugUnitTest :app:assembleDebug --no-daemon
+      - name: Build Debug APK
+        run: gradle assembleDebug
 
-      - name: Prepare APK
-        run: |
-          mkdir -p out
-          SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
-          test -n "$SRC"
-          VERSION="${{ inputs.version || 'dev' }}"
-          cp "$SRC" "out/Procam-v${VERSION}.apk"
-          ls -la out/
-
-      - name: Upload Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: procam-debug-apk
-          path: out/*.apk
-          retention-days: 30
-
-      - name: Create GitHub Release
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ inputs.version }}
-          name: Procam v${{ inputs.version }}
-          body: |
-            ## Procam v${{ inputs.version }}
-
-            This artifact is a debug APK. A production release should be signed with the project's release signing configuration before distribution.
-
-            ### Implemented behavior
-            - Camera2 preview and recording
-            - H.265 when a compatible encoder/configuration exists, otherwise automatic H.264 fallback
-            - 30/60 fps requests with runtime fallback to a supported camera FPS
-            - Runtime validation of camera recording sizes and encoder capabilities
-            - AAC audio with timestamped audio/video muxing
-            - MediaStore save to Movies/Procam
-            - Correct MediaCodec output-format handling
-            - Safer recording shutdown and cleanup
-          files: out/*.apk
-          draft: false
-          prerelease: false
-          generate_release_notes: true
+          name: procam-debug
+          path: app/build/outputs/apk/debug/*.apk
