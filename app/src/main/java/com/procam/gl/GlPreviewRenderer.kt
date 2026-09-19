@@ -12,7 +12,9 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 class GlPreviewRenderer(
-    private val onSurfaceReady: (Surface) -> Unit
+    private val onSurfaceReady: (Surface) -> Unit,
+    private val bufferWidth: Int,
+    private val bufferHeight: Int
 ) : GLSurfaceView.Renderer {
 
     companion object {
@@ -20,9 +22,10 @@ class GlPreviewRenderer(
             attribute vec4 aPosition;
             attribute vec2 aTexCoord;
             uniform mat4 uTexMatrix;
+            uniform vec2 uScale;
             varying vec2 vTexCoord;
             void main() {
-                gl_Position = aPosition;
+                gl_Position = vec4(aPosition.x * uScale.x, aPosition.y * uScale.y, aPosition.z, aPosition.w);
                 vTexCoord = (uTexMatrix * vec4(aTexCoord, 0.0, 1.0)).xy;
             }
         """
@@ -81,6 +84,9 @@ class GlPreviewRenderer(
     var saturation: Float = 1f
     var temperature: Float = 0f
 
+    @Volatile private var scaleX: Float = 1f
+    @Volatile private var scaleY: Float = 1f
+
     private var program = 0
     private var aPosition = 0
     private var aTexCoord = 0
@@ -93,6 +99,7 @@ class GlPreviewRenderer(
     private var uContrast = 0
     private var uSaturation = 0
     private var uTemperature = 0
+    private var uScale = 0
 
     private var externalTextureId = 0
     private var surfaceTexture: SurfaceTexture? = null
@@ -128,6 +135,19 @@ class GlPreviewRenderer(
 
     private val texMatrix = FloatArray(16)
 
+    fun setViewSize(viewWidth: Int, viewHeight: Int) {
+        if (viewWidth <= 0 || viewHeight <= 0) return
+        val camAspect = bufferWidth.toFloat() / bufferHeight.toFloat()
+        val viewAspect = viewWidth.toFloat() / viewHeight.toFloat()
+        if (camAspect > viewAspect) {
+            scaleX = viewAspect / camAspect
+            scaleY = 1f
+        } else {
+            scaleX = 1f
+            scaleY = camAspect / viewAspect
+        }
+    }
+
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         program = createProgram(VERTEX_SHADER, FRAGMENT_SHADER)
         aPosition = GLES20.glGetAttribLocation(program, "aPosition")
@@ -141,6 +161,7 @@ class GlPreviewRenderer(
         uContrast = GLES20.glGetUniformLocation(program, "uContrast")
         uSaturation = GLES20.glGetUniformLocation(program, "uSaturation")
         uTemperature = GLES20.glGetUniformLocation(program, "uTemperature")
+        uScale = GLES20.glGetUniformLocation(program, "uScale")
 
         val texIds = IntArray(1)
         GLES20.glGenTextures(1, texIds, 0)
@@ -152,6 +173,7 @@ class GlPreviewRenderer(
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
 
         val st = SurfaceTexture(externalTextureId)
+        st.setDefaultBufferSize(bufferWidth, bufferHeight)
         surfaceTexture = st
         val surf = Surface(st)
         cameraSurface = surf
@@ -163,6 +185,7 @@ class GlPreviewRenderer(
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         GLES20.glViewport(0, 0, width, height)
+        setViewSize(width, height)
     }
 
     override fun onDrawFrame(gl: GL10?) {
@@ -191,6 +214,7 @@ class GlPreviewRenderer(
         GLES20.glUniform1f(uContrast, contrast)
         GLES20.glUniform1f(uSaturation, saturation)
         GLES20.glUniform1f(uTemperature, temperature)
+        GLES20.glUniform2f(uScale, scaleX, scaleY)
 
         GLES20.glUniformMatrix4fv(uTexMatrix, 1, false, texMatrix, 0)
 
