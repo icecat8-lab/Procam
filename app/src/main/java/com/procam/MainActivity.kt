@@ -14,38 +14,28 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.procam.ui.CameraScreen
 
 class MainActivity : ComponentActivity() {
-
     private val hasPermission = mutableStateOf(false)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        hasPermission.value = checkAll()
-    }
+    ) { hasPermission.value = checkAll() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
-            systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
-
         hasPermission.value = checkAll()
         if (!hasPermission.value) requestAll()
-
-        setContent {
-            CameraScreen(hasPermission = hasPermission.value)
-        }
+        setContent { CameraScreen(hasPermission = hasPermission.value) }
     }
 
     override fun onResume() {
         super.onResume()
-        val granted = checkAll()
-        hasPermission.value = granted
-        if (!granted) requestAll()
+        hasPermission.value = checkAll()
+        if (!hasPermission.value) requestAll()
     }
 
     private fun requiredPermissions(): Array<String> = arrayOf(
@@ -57,7 +47,5 @@ class MainActivity : ComponentActivity() {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun requestAll() {
-        permissionLauncher.launch(requiredPermissions())
-    }
+    private fun requestAll() = permissionLauncher.launch(requiredPermissions())
 }
