@@ -53,6 +53,7 @@ class ProcamEngine(
         private const val AUDIO_BITRATE = 192_000
     }
 
+    private var cameraManager: CameraManager? = null
     private var cameraDevice: CameraDevice? = null
     private var session: CameraCaptureSession? = null
     private var previewSurface: Surface? = null
@@ -125,7 +126,7 @@ class ProcamEngine(
         }
     }
 
-    fun open(cameraManager: CameraManager, surface: Surface) {
+    fun open(cm: CameraManager, surface: Surface) {
         if (isOpening) return
         if (cameraDevice != null && previewSurface === surface) {
             return
@@ -133,6 +134,7 @@ class ProcamEngine(
         isOpening = true
         ensureThread()
         previewSurface = surface
+        cameraManager = cm
 
         if (cameraDevice != null) {
             isOpening = false
@@ -141,12 +143,12 @@ class ProcamEngine(
         }
 
         try {
+            querySessionKeys(cm)
             @Suppress("MissingPermission")
-            cameraManager.openCamera(CAMERA_ID, object : CameraDevice.StateCallback() {
+            cm.openCamera(CAMERA_ID, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
                     isOpening = false
                     cameraDevice = camera
-                    querySessionKeys(camera)
                     createSession()
                 }
                 override fun onDisconnected(camera: CameraDevice) {
@@ -167,9 +169,9 @@ class ProcamEngine(
         }
     }
 
-    private fun querySessionKeys(device: CameraDevice) {
+    private fun querySessionKeys(cm: CameraManager) {
         try {
-            val chars = device.cameraCharacteristics
+            val chars = cm.getCameraCharacteristics(CAMERA_ID)
             val keys = chars.availableSessionKeys
             availableSessionKeys = keys ?: emptyList()
             Log.d(TAG, "Session keys available: ${availableSessionKeys.size}")
@@ -221,8 +223,6 @@ class ProcamEngine(
             val outputConfig = OutputConfiguration(preview)
             val outputConfigs = listOf(outputConfig)
 
-            val sessionParams = buildPreviewSessionParams()
-
             val sessionConfig = SessionConfiguration(
                 SessionConfiguration.SESSION_REGULAR,
                 outputConfigs,
@@ -256,7 +256,11 @@ class ProcamEngine(
             )
 
             if (availableSessionKeys.isNotEmpty()) {
-                sessionConfig.sessionParameters = sessionParams
+                try {
+                    sessionConfig.sessionParameters = buildPreviewSessionParams()
+                } catch (t: Throwable) {
+                    Log.e(TAG, "preview session params failed", t)
+                }
             }
 
             device.createCaptureSession(sessionConfig)
@@ -686,6 +690,7 @@ class ProcamEngine(
             if (state.isRecording) stopRecording()
             closeCurrentSession()
             cameraDevice?.close(); cameraDevice = null
+            cameraManager = null
             bgThread?.quitSafely(); bgThread = null
             bgHandler = null
         } catch (_: Throwable) {}
