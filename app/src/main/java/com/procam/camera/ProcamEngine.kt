@@ -201,31 +201,40 @@ class ProcamEngine(
         session = null
     }
 
-    private fun setEvInternal(index: Int) {
-        currentEvIndex = index.coerceIn(minEvIndex, maxEvIndex)
+    fun setEv(evValue: Float) {
+        val stepsFromZero = (evValue / evStep).roundToInt()
+        currentEvIndex = stepsFromZero.coerceIn(minEvIndex, maxEvIndex)
         val evFloat = currentEvIndex * evStep
         emit { copy(ev = evFloat) }
+
         try {
-            val rb = session?.let { device()?.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW) }
-            if (rb != null && previewSurface != null) {
-                rb.addTarget(previewSurface!!)
-                rb.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-                rb.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-                rb.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-                rb.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
+            val device = cameraDevice ?: return
+            val preview = previewSurface ?: return
+            if (state.isRecording) {
+                val videoSurface = videoInputSurface ?: return
+                val rb = device.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
+                    addTarget(preview)
+                    addTarget(videoSurface)
+                    set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                    set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                    set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+                    set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
+                }
+                session?.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
+            } else {
+                val rb = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
+                    addTarget(preview)
+                    set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                    set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                    set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+                    set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
+                }
                 session?.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
             }
         } catch (t: Throwable) {
             Log.e(TAG, "setEv failed", t)
         }
     }
-
-    fun setEv(evValue: Float) {
-        val stepsFromZero = (evValue / evStep).roundToInt()
-        setEvInternal(stepsFromZero)
-    }
-
-    private fun device(): CameraDevice? = cameraDevice
 
     private fun createSession() {
         val device = cameraDevice ?: return
@@ -345,6 +354,7 @@ class ProcamEngine(
                         }
                         try {
                             s.setRepeatingRequest(rb.build(), captureCallback, bgHandler)
+                            Thread.sleep(100)
                             startEncoderThreads()
                             audioRecording = true
                             startAudioCapture()
