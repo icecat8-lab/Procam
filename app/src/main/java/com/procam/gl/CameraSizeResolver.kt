@@ -10,16 +10,18 @@ object CameraSizeResolver {
 
     data class PreviewInfo(
         val width: Int,
-        val height: Int
+        val height: Int,
+        val sensorOrientation: Int
     )
 
     fun resolve(context: Context, cameraId: String = "0"): PreviewInfo {
         return try {
             val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
             val chars = cm.getCameraCharacteristics(cameraId)
+            val orientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
             val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             val sizes = map?.getOutputSizes(SurfaceTexture::class.java) ?: emptyArray()
-            if (sizes.isEmpty()) return PreviewInfo(1920, 1080)
+            if (sizes.isEmpty()) return PreviewInfo(1920, 1080, orientation)
 
             val target = 16f / 9f
             val landscape = sizes
@@ -39,9 +41,9 @@ object CameraSizeResolver {
                 }
                 .maxByOrNull { it.width.toLong() * it.height } ?: bestMatch
 
-            PreviewInfo(capped.width, capped.height)
+            PreviewInfo(capped.width, capped.height, orientation)
         } catch (_: Throwable) {
-            PreviewInfo(1920, 1080)
+            PreviewInfo(1920, 1080, 90)
         }
     }
 }
