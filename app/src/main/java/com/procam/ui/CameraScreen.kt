@@ -17,7 +17,6 @@ import com.procam.camera.ProcamEngine
 import com.procam.camera.VideoSettings
 import com.procam.ui.components.*
 import com.procam.ui.theme.ProcamColors
-import kotlin.math.log2
 
 private sealed class Screen {
     object Camera : Screen()
@@ -42,14 +41,18 @@ fun CameraScreen(hasPermission: Boolean) {
     var screen by remember { mutableStateOf<Screen>(Screen.Camera) }
     var settings by remember { mutableStateOf(VideoSettings()) }
     var isGridOn by remember { mutableStateOf(false) }
+    var isOpened by remember { mutableStateOf(false) }
     var previewSurface by remember { mutableStateOf<Surface?>(null) }
-    var opened by remember { mutableStateOf(false) }
 
     LaunchedEffect(hasPermission, previewSurface) {
-        if (hasPermission && previewSurface != null && !opened) {
-            opened = true
+        if (hasPermission && previewSurface != null) {
             val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-            engine.open(cm, previewSurface!!)
+            if (!isOpened) {
+                isOpened = true
+                engine.open(cm, previewSurface!!)
+            } else {
+                engine.attachSurface(previewSurface!!)
+            }
         }
     }
 
@@ -57,101 +60,101 @@ fun CameraScreen(hasPermission: Boolean) {
         onDispose { engine.close() }
     }
 
-    when (screen) {
-        Screen.More -> {
-            MoreScreen(
-                settings = settings,
-                onBack = { screen = Screen.Camera },
-                onResolutionClick = { screen = Screen.Resolution },
-                onFpsClick = { screen = Screen.Fps },
-                onCodecClick = { screen = Screen.Codec }
+    if (screen is Screen.More) {
+        MoreScreen(
+            settings = settings,
+            onBack = { screen = Screen.Camera },
+            onResolutionClick = { screen = Screen.Resolution },
+            onFpsClick = { screen = Screen.Fps },
+            onCodecClick = { screen = Screen.Codec }
+        )
+        return
+    }
+
+    if (screen is Screen.Resolution) {
+        val options = listOf(
+            SelectOption(
+                "3840×2160 (4K)",
+                VideoSettings(3840, 2160, 30, bitrateFor(3840, 2160, 30),
+                    settings.codec, settings.codecLabel)
+            ),
+            SelectOption(
+                "1920×1080 (FHD)",
+                VideoSettings(1920, 1080, 30, bitrateFor(1920, 1080, 30),
+                    settings.codec, settings.codecLabel)
+            ),
+            SelectOption(
+                "1280×720 (HD)",
+                VideoSettings(1280, 720, 30, bitrateFor(1280, 720, 30),
+                    settings.codec, settings.codecLabel)
             )
-            return
-        }
-        Screen.Resolution -> {
-            val options = listOf(
-                SelectOption(
-                    "3840×2160 (4K)",
-                    VideoSettings(3840, 2160, 30, bitrateFor(3840, 2160, 30),
-                        settings.codec, settings.codecLabel)
-                ),
-                SelectOption(
-                    "1920×1080 (FHD)",
-                    VideoSettings(1920, 1080, 30, bitrateFor(1920, 1080, 30),
-                        settings.codec, settings.codecLabel)
-                ),
-                SelectOption(
-                    "1280×720 (HD)",
-                    VideoSettings(1280, 720, 30, bitrateFor(1280, 720, 30),
-                        settings.codec, settings.codecLabel)
+        )
+        SelectScreen(
+            title = "Resolution",
+            options = options,
+            currentMatch = { it.settings.width == settings.width && it.settings.height == settings.height },
+            onBack = { screen = Screen.More },
+            onSelect = { option ->
+                val newFps = if (option.settings.height == 2160) 30 else settings.fps
+                settings = settings.copy(
+                    width = option.settings.width,
+                    height = option.settings.height,
+                    fps = newFps,
+                    bitrate = bitrateFor(option.settings.width, option.settings.height, newFps)
                 )
-            )
-            SelectScreen(
-                title = "Resolution",
-                options = options,
-                currentMatch = { it.settings.width == settings.width && it.settings.height == settings.height },
-                onBack = { screen = Screen.More },
-                onSelect = { option ->
-                    val newFps = if (option.settings.height == 2160) 30 else settings.fps
-                    settings = settings.copy(
-                        width = option.settings.width,
-                        height = option.settings.height,
-                        fps = newFps,
-                        bitrate = bitrateFor(option.settings.width, option.settings.height, newFps)
-                    )
-                    screen = Screen.More
-                }
-            )
-            return
-        }
-        Screen.Fps -> {
-            val available = if (settings.height == 2160) listOf(30) else listOf(30, 60)
-            val options = available.map { fps ->
-                SelectOption(
-                    "$fps fps",
-                    settings.copy(fps = fps, bitrate = bitrateFor(settings.width, settings.height, fps))
-                )
+                screen = Screen.More
             }
-            SelectScreen(
-                title = "FPS",
-                options = options,
-                currentMatch = { it.settings.fps == settings.fps },
-                onBack = { screen = Screen.More },
-                onSelect = { option ->
-                    settings = settings.copy(
-                        fps = option.settings.fps,
-                        bitrate = option.settings.bitrate
-                    )
-                    screen = Screen.More
-                }
+        )
+        return
+    }
+
+    if (screen is Screen.Fps) {
+        val available = if (settings.height == 2160) listOf(30) else listOf(30, 60)
+        val options = available.map { fps ->
+            SelectOption(
+                "$fps fps",
+                settings.copy(fps = fps, bitrate = bitrateFor(settings.width, settings.height, fps))
             )
-            return
         }
-        Screen.Codec -> {
-            val options = listOf(
-                SelectOption("H.264", settings.copy(codec = "video/avc", codecLabel = "H.264")),
-                SelectOption("H.265 (HEVC)", settings.copy(codec = "video/hevc", codecLabel = "H.265"))
-            )
-            SelectScreen(
-                title = "Codec",
-                options = options,
-                currentMatch = { it.settings.codec == settings.codec },
-                onBack = { screen = Screen.More },
-                onSelect = { option ->
-                    settings = settings.copy(
-                        codec = option.settings.codec,
-                        codecLabel = option.settings.codecLabel
-                    )
-                    screen = Screen.More
-                }
-            )
-            return
-        }
-        Screen.Camera -> {}
+        SelectScreen(
+            title = "FPS",
+            options = options,
+            currentMatch = { it.settings.fps == settings.fps },
+            onBack = { screen = Screen.More },
+            onSelect = { option ->
+                settings = settings.copy(
+                    fps = option.settings.fps,
+                    bitrate = option.settings.bitrate
+                )
+                screen = Screen.More
+            }
+        )
+        return
+    }
+
+    if (screen is Screen.Codec) {
+        val options = listOf(
+            SelectOption("H.264", settings.copy(codec = "video/avc", codecLabel = "H.264")),
+            SelectOption("H.265 (HEVC)", settings.copy(codec = "video/hevc", codecLabel = "H.265"))
+        )
+        SelectScreen(
+            title = "Codec",
+            options = options,
+            currentMatch = { it.settings.codec == settings.codec },
+            onBack = { screen = Screen.More },
+            onSelect = { option ->
+                settings = settings.copy(
+                    codec = option.settings.codec,
+                    codecLabel = option.settings.codecLabel
+                )
+                screen = Screen.More
+            }
+        )
+        return
     }
 
     val timecode = formatTimecode(engineState.durationMs, engineState.isRecording)
-    val evText = computeEV(engineState.shutterNs, engineState.iso)
+    val evText = "%+.1f".format(engineState.ev)
 
     Row(Modifier.fillMaxSize().background(ProcamColors.Bg)) {
         Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -245,12 +248,4 @@ private fun formatShutter(ns: Long): String {
     if (ns <= 0) return "AUTO"
     val denom = (1_000_000_000.0 / ns).toInt()
     return "1/$denom"
-}
-
-private fun computeEV(shutterNs: Long, iso: Int): String {
-    if (shutterNs <= 0L || iso <= 0) return "EV —"
-    val t = shutterNs / 1_000_000_000.0
-    val n = 1.8
-    val ev = log2(n * n / t) - log2(iso / 100.0)
-    return "EV %.1f".format(ev)
 }
