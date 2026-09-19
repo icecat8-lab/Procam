@@ -3,8 +3,6 @@ package com.procam.camera
 import android.content.ContentValues
 import android.content.Context
 import android.hardware.camera2.*
-import android.hardware.camera2.params.OutputConfiguration
-import android.hardware.camera2.params.SessionConfiguration
 import android.media.*
 import android.net.Uri
 import android.os.Build
@@ -16,7 +14,6 @@ import android.util.Range
 import android.view.Surface
 import java.io.File
 import java.nio.ByteBuffer
-import java.util.concurrent.Executor
 import kotlin.math.ln
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -64,7 +61,6 @@ class ProcamEngine(
 
     private var bgThread: HandlerThread? = null
     private var bgHandler: Handler? = null
-    private val executor = Executor { it.run() }
 
     private var videoEncoder: MediaCodec? = null
     private var videoInputSurface: Surface? = null
@@ -297,13 +293,9 @@ class ProcamEngine(
         closeCurrentSession()
 
         try {
-            val previewConfig = OutputConfiguration(preview)
-            val outputConfigs = listOf(previewConfig)
-
-            val sessionConfig = SessionConfiguration(
-                SessionConfiguration.SESSION_REGULAR,
-                outputConfigs,
-                executor,
+            @Suppress("DEPRECATION")
+            device.createCaptureSession(
+                listOf(preview),
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(s: CameraCaptureSession) {
                         session = s
@@ -324,29 +316,9 @@ class ProcamEngine(
                         Log.e(TAG, "Session configure failed")
                         emit { copy(error = "Session config failed") }
                     }
-                }
+                },
+                bgHandler
             )
-
-            val keys = try {
-                cameraManager?.getCameraCharacteristics(CAMERA_ID)?.availableSessionKeys
-            } catch (_: Throwable) { null }
-
-            if (keys != null && keys.isNotEmpty()) {
-                try {
-                    val params = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                        set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-                        set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-                        set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-                        set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
-                        set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
-                    }.build()
-                    sessionConfig.sessionParameters = params
-                } catch (t: Throwable) {
-                    Log.w(TAG, "sessionParameters failed, fallback", t)
-                }
-            }
-
-            device.createCaptureSession(sessionConfig)
         } catch (t: Throwable) {
             Log.e(TAG, "createSession failed", t)
             emit { copy(error = t.message) }
@@ -413,14 +385,9 @@ class ProcamEngine(
 
             val videoSurface = videoInputSurface!!
 
-            val previewConfig = OutputConfiguration(preview)
-            val videoConfig = OutputConfiguration(videoSurface)
-            val outputConfigs = listOf(previewConfig, videoConfig)
-
-            val sessionConfig = SessionConfiguration(
-                SessionConfiguration.SESSION_REGULAR,
-                outputConfigs,
-                executor,
+            @Suppress("DEPRECATION")
+            device.createCaptureSession(
+                listOf(preview, videoSurface),
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(s: CameraCaptureSession) {
                         session = s
@@ -465,32 +432,9 @@ class ProcamEngine(
                         emit { copy(error = "Record session config failed") }
                         cleanupRecording()
                     }
-                }
+                },
+                bgHandler
             )
-
-            val keys = try {
-                cameraManager?.getCameraCharacteristics(CAMERA_ID)?.availableSessionKeys
-            } catch (_: Throwable) { null }
-
-            if (keys != null && keys.isNotEmpty()) {
-                try {
-                    val params = device.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
-                        set(
-                            CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                            Range(settings.fps, settings.fps)
-                        )
-                        set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-                        set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-                        set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-                        set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEvIndex)
-                    }.build()
-                    sessionConfig.sessionParameters = params
-                } catch (t: Throwable) {
-                    Log.w(TAG, "record sessionParameters failed", t)
-                }
-            }
-
-            device.createCaptureSession(sessionConfig)
         } catch (t: Throwable) {
             Log.e(TAG, "startRecording failed", t)
             cleanupRecording()
