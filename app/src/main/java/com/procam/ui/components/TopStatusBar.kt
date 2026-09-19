@@ -8,8 +8,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.procam.ui.theme.ProcamColors
 import com.procam.ui.theme.ProcamType
 
@@ -20,7 +22,7 @@ fun TopStatusBar(
     iris: String,
     iso: Int,
     wb: String,
-    resolution: String,
+    ev: String,
     isRecording: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -44,7 +46,7 @@ fun TopStatusBar(
                 )
             }
             Stat("SHUTTER", shutter)
-            Stat("IRIS", iris)
+            IrisStat(iris)
         }
 
         Spacer(Modifier.weight(1f))
@@ -55,7 +57,7 @@ fun TopStatusBar(
         ) {
             Stat("ISO", iso.toString())
             Stat("WB", wb)
-            Badge(resolution)
+            EvBadge(ev)
         }
     }
 }
@@ -73,7 +75,21 @@ private fun Stat(label: String, value: String) {
 }
 
 @Composable
-private fun Badge(text: String) {
+private fun IrisStat(value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("IRIS", style = ProcamType.Label, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(2.dp))
+        Text(
+            value,
+            color = ProcamColors.Text,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun EvBadge(text: String) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
