@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
-import android.util.Size
+import kotlin.math.abs
 
 object CameraSizeResolver {
 
@@ -27,12 +27,15 @@ object CameraSizeResolver {
 
             val bestMatch = landscape.minByOrNull {
                 val a = it.width.toFloat() / it.height
-                kotlin.math.abs(a - target)
+                abs(a - target)
             } ?: landscape.firstOrNull() ?: sizes[0]
 
             val capped = landscape
                 .filter { it.width <= bestMatch.width && it.height <= bestMatch.height }
-                .filter { kotlin.math.abs(it.width.toFloat() / it.height - bestMatch.width.toFloat() / bestMatch.height) < 0.01f }
+                .filter {
+                    abs(it.width.toFloat() / it.height -
+                        bestMatch.width.toFloat() / bestMatch.height) < 0.01f
+                }
                 .maxByOrNull { it.width.toLong() * it.height } ?: bestMatch
 
             PreviewSize(capped.width, capped.height)
