@@ -43,14 +43,13 @@ fun GlCameraPreview(
         AndroidView(
             factory = { ctx ->
                 GLSurfaceView(ctx).apply {
-                    setEGLContextClientVersion(2)
+                    setEGLContextClientVersion(3)
                     val renderer = GlPreviewRenderer(
                         onSurfaceReady = { surface ->
                             mainHandler.post { onSurfaceReady(surface) }
                         },
                         bufferWidth = previewInfo.width,
-                        bufferHeight = previewInfo.height,
-                        sensorOrientation = previewInfo.sensorOrientation
+                        bufferHeight = previewInfo.height
                     )
                     setRenderer(renderer)
                     renderer.bindGlSurfaceView(this)
