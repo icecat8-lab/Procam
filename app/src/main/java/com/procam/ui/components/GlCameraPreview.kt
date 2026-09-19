@@ -1,5 +1,6 @@
 package com.procam.ui.components
 
+import android.content.Context
 import android.opengl.GLSurfaceView
 import android.os.Handler
 import android.os.Looper
@@ -9,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import com.procam.gl.CameraSizeResolver
 import com.procam.gl.GlPreviewRenderer
@@ -28,45 +28,46 @@ fun GlCameraPreview(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val density = LocalDensity.current
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val previewInfo = remember(context) { CameraSizeResolver.resolve(context) }
     var rendererRef by remember { mutableStateOf<GlPreviewRenderer?>(null) }
 
-    val previewInfo = remember {
-        CameraSizeResolver.resolve(context)
-    }
-
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val viewWpx = with(density) { maxWidth.toPx() }.toInt()
-        val viewHpx = with(density) { maxHeight.toPx() }.toInt()
-
         AndroidView(
-            factory = { ctx ->
+            factory = { ctx: Context ->
                 GLSurfaceView(ctx).apply {
                     setEGLContextClientVersion(3)
+                    preserveEGLContextOnPause = false
                     val renderer = GlPreviewRenderer(
                         onSurfaceReady = { surface ->
                             mainHandler.post { onSurfaceReady(surface) }
                         },
+                        onSurfaceDetached = {
+                            mainHandler.post { onSurfaceDestroyed() }
+                        },
                         bufferWidth = previewInfo.width,
-                        bufferHeight = previewInfo.height
+                        bufferHeight = previewInfo.height,
+                        sensorOrientation = previewInfo.sensorOrientation,
+                        isFrontCamera = previewInfo.isFrontCamera
                     )
-                    setRenderer(renderer)
                     renderer.bindGlSurfaceView(this)
+                    setRenderer(renderer)
+                    renderer.setDisplayRotationDegrees(displayRotationDegrees(this))
                     rendererRef = renderer
                 }
             },
             modifier = Modifier.fillMaxSize(),
-            onRelease = {
+            update = { view ->
+                rendererRef?.setDisplayRotationDegrees(displayRotationDegrees(view))
+            },
+            onRelease = { view ->
                 rendererRef?.release()
+                view.onPause()
                 rendererRef = null
-                onSurfaceDestroyed()
+                mainHandler.post { onSurfaceDestroyed() }
             }
         )
 
-        LaunchedEffect(viewWpx, viewHpx, previewInfo) {
-            rendererRef?.setViewSize(viewWpx, viewHpx)
-        }
     }
 
     LaunchedEffect(lutEnabled, lutTextureId, lutSize, brightness, contrast, saturation, temperature) {
@@ -80,4 +81,11 @@ fun GlCameraPreview(
             this.temperature = temperature
         }
     }
+}
+
+private fun displayRotationDegrees(view: GLSurfaceView): Int = when (view.display?.rotation) {
+    Surface.ROTATION_90 -> 90
+    Surface.ROTATION_180 -> 180
+    Surface.ROTATION_270 -> 270
+    else -> 0
 }
