@@ -14,8 +14,7 @@ import javax.microedition.khronos.opengles.GL10
 class GlPreviewRenderer(
     private val onSurfaceReady: (Surface) -> Unit,
     private val bufferWidth: Int,
-    private val bufferHeight: Int,
-    private val sensorOrientation: Int
+    private val bufferHeight: Int
 ) : GLSurfaceView.Renderer, SurfaceTexture.OnFrameAvailableListener {
 
     companion object {
@@ -24,19 +23,10 @@ in vec4 aPosition;
 in vec2 aTexCoord;
 uniform mat4 uTexMatrix;
 uniform vec2 uScale;
-uniform float uRotation;
 out vec2 vTexCoord;
 void main() {
     gl_Position = vec4(aPosition.x * uScale.x, aPosition.y * uScale.y, aPosition.z, aPosition.w);
-    vec2 tc = (uTexMatrix * vec4(aTexCoord, 0.0, 1.0)).xy;
-    if (uRotation > 45.0 && uRotation < 135.0) {
-        tc = vec2(tc.y, 1.0 - tc.x);
-    } else if (uRotation > 135.0 && uRotation < 225.0) {
-        tc = vec2(1.0 - tc.x, 1.0 - tc.y);
-    } else if (uRotation > 225.0 && uRotation < 315.0) {
-        tc = vec2(1.0 - tc.y, tc.x);
-    }
-    vTexCoord = tc;
+    vTexCoord = (uTexMatrix * vec4(aTexCoord, 0.0, 1.0)).xy;
 }
 """
 
@@ -98,7 +88,6 @@ void main() {
 
     @Volatile private var scaleX: Float = 1f
     @Volatile private var scaleY: Float = 1f
-    @Volatile private var rotationDegrees: Float = sensorOrientation.toFloat()
 
     private var glSurfaceView: GLSurfaceView? = null
 
@@ -115,7 +104,6 @@ void main() {
     private var uSaturation = 0
     private var uTemperature = 0
     private var uScale = 0
-    private var uRotation = 0
 
     private var externalTextureId = 0
     private var surfaceTexture: SurfaceTexture? = null
@@ -189,7 +177,6 @@ void main() {
         uSaturation = GLES30.glGetUniformLocation(program, "uSaturation")
         uTemperature = GLES30.glGetUniformLocation(program, "uTemperature")
         uScale = GLES30.glGetUniformLocation(program, "uScale")
-        uRotation = GLES30.glGetUniformLocation(program, "uRotation")
 
         val texIds = IntArray(1)
         GLES30.glGenTextures(1, texIds, 0)
@@ -243,7 +230,6 @@ void main() {
         GLES30.glUniform1f(uSaturation, saturation)
         GLES30.glUniform1f(uTemperature, temperature)
         GLES30.glUniform2f(uScale, scaleX, scaleY)
-        GLES30.glUniform1f(uRotation, rotationDegrees)
 
         GLES30.glUniformMatrix4fv(uTexMatrix, 1, false, texMatrix, 0)
 
