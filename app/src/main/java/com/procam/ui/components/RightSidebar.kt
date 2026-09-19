@@ -40,12 +40,7 @@ fun RightSidebar(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            IconPill(Icons.Outlined.Videocam, "Video", true) {}
-        }
+        Spacer(Modifier.height(48.dp))
 
         RecordButton(isRecording, onRecordToggle)
 
