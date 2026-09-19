@@ -31,7 +31,6 @@ fun GlCameraPreview(
     val density = LocalDensity.current
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var rendererRef by remember { mutableStateOf<GlPreviewRenderer?>(null) }
-    var glViewRef by remember { mutableStateOf<GLSurfaceView?>(null) }
 
     val previewSize = remember {
         CameraSizeResolver.resolve(context)
@@ -55,14 +54,12 @@ fun GlCameraPreview(
                     setRenderer(renderer)
                     renderer.bindGlSurfaceView(this)
                     rendererRef = renderer
-                    glViewRef = this
                 }
             },
             modifier = Modifier.fillMaxSize(),
             onRelease = {
                 rendererRef?.release()
                 rendererRef = null
-                glViewRef = null
                 onSurfaceDestroyed()
             }
         )
