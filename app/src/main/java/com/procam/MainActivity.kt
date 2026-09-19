@@ -2,6 +2,7 @@ package com.procam
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -20,8 +21,7 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
-        hasPermission.value = result[Manifest.permission.CAMERA] == true &&
-            result[Manifest.permission.RECORD_AUDIO] == true
+        hasPermission.value = checkAll()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,7 +34,10 @@ class MainActivity : ComponentActivity() {
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
 
-        checkAndRequestPermissions()
+        hasPermission.value = checkAll()
+        if (!hasPermission.value) {
+            requestAll()
+        }
 
         setContent {
             CameraScreen(hasPermission = hasPermission.value)
@@ -43,36 +46,38 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        checkPermissionOnly()
-    }
-
-    private fun checkPermissionOnly() {
-        val camGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
-        val micGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-        if (camGranted && micGranted && !hasPermission.value) {
-            hasPermission.value = true
+        val now = checkAll()
+        if (now != hasPermission.value) {
+            hasPermission.value = now
+        }
+        if (!now) {
+            requestAll()
         }
     }
 
-    private fun checkAndRequestPermissions() {
-        val camGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.CAMERA
-        ) == PackageManager.PERMISSION_GRANTED
-        val micGranted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (camGranted && micGranted) {
-            hasPermission.value = true
-        } else {
-            permissionLauncher.launch(arrayOf(
+    private fun requiredPermissions(): Array<String> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(
                 Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO
-            ))
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.READ_MEDIA_VIDEO
+            )
+        } else {
+            arrayOf(
+                Manifest.permission.CAMERA,
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            )
         }
+    }
+
+    private fun checkAll(): Boolean {
+        return requiredPermissions().all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    private fun requestAll() {
+        permissionLauncher.launch(requiredPermissions())
     }
 }
