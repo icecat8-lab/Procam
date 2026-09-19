@@ -2,7 +2,6 @@ package com.procam
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -20,7 +19,7 @@ class MainActivity : ComponentActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { result ->
+    ) {
         hasPermission.value = checkAll()
     }
 
@@ -35,9 +34,7 @@ class MainActivity : ComponentActivity() {
         }
 
         hasPermission.value = checkAll()
-        if (!hasPermission.value) {
-            requestAll()
-        }
+        if (!hasPermission.value) requestAll()
 
         setContent {
             CameraScreen(hasPermission = hasPermission.value)
@@ -46,35 +43,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        val now = checkAll()
-        if (now != hasPermission.value) {
-            hasPermission.value = now
-        }
-        if (!now) {
-            requestAll()
-        }
+        val granted = checkAll()
+        hasPermission.value = granted
+        if (!granted) requestAll()
     }
 
-    private fun requiredPermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(
-                Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO,
-                Manifest.permission.READ_MEDIA_VIDEO
-            )
-        } else {
-            arrayOf(
-                Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO,
-                Manifest.permission.READ_EXTERNAL_STORAGE
-            )
-        }
-    }
+    private fun requiredPermissions(): Array<String> = arrayOf(
+        Manifest.permission.CAMERA,
+        Manifest.permission.RECORD_AUDIO
+    )
 
-    private fun checkAll(): Boolean {
-        return requiredPermissions().all {
-            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
-        }
+    private fun checkAll(): Boolean = requiredPermissions().all {
+        ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun requestAll() {
