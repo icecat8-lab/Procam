@@ -36,10 +36,9 @@ class MainActivity : Activity() {
     private lateinit var btnS: TextView
     private lateinit var btnEv: TextView
 
-    private val wbValues = intArrayOf(CaptureRequest.CONTROL_AWB_MODE_AUTO, CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT, CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT, CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT, CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT)
-    private val wbLabels = arrayOf("AWB", "Cloudy", "Day", "Fluor", "Incan")
-
     private var activeMode = "NONE"
+    
+    // สถานะ Progress ของแต่ละโหมด
     private var afProgress = 0; private var isoProgress = 0; private var sProgress = 0
     private var wbProgress = 0; private var evProgress = 50
 
@@ -74,16 +73,11 @@ class MainActivity : Activity() {
             cameraController.switchRatio(newIs16by9)
         }
 
+        // ระบบกดปุ่ม AUTO
         btnAutoToggle.setOnClickListener {
-            when (activeMode) {
-                "AF" -> { cameraController.isAfAuto = true; afProgress = 0; btnAf.text = "AF\nAUTO"; btnAf.setTextColor(Color.parseColor("#00FF00")); sliderValueText.text = "AUTO" }
-                "ISO" -> { cameraController.isIsoAuto = true; isoProgress = 0; btnIso.text = "ISO\nAUTO"; btnIso.setTextColor(Color.parseColor("#00FF00")); sliderValueText.text = "AUTO" }
-                "S" -> { cameraController.isSpeedAuto = true; sProgress = 0; btnS.text = "S\nAUTO"; btnS.setTextColor(Color.parseColor("#00FF00")); sliderValueText.text = "AUTO" }
-                "EV" -> { cameraController.currentEv = 0; evProgress = 50; btnEv.text = "EV\n0.0"; btnEv.setTextColor(Color.parseColor("#00FF00")); sliderValueText.text = "0.0" }
-                "WB" -> { cameraController.currentWb = CaptureRequest.CONTROL_AWB_MODE_AUTO; wbProgress = 0; btnWb.text = "WB\nAWB"; btnWb.setTextColor(Color.parseColor("#00FF00")); sliderValueText.text = "AWB" }
-            }
-            settingSeekbar.progress = if (activeMode == "EV") 50 else 0
-            updateAutoButtonState(true)
+            val targetProgress = if (activeMode == "EV") 50 else 0
+            settingSeekbar.progress = targetProgress
+            updateSliderUI(targetProgress, true)
             cameraController.applySettings()
         }
 
@@ -116,78 +110,99 @@ class MainActivity : Activity() {
         settingSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (!fromUser) return
-                
-                val isAuto = if (activeMode == "EV") progress == 50 else progress == 0
-                updateAutoButtonState(isAuto)
-
-                when (activeMode) {
-                    "AF" -> {
-                        afProgress = progress
-                        cameraController.isAfAuto = isAuto
-                        if (isAuto) {
-                            btnAf.text = "AF\nAUTO"; btnAf.setTextColor(Color.parseColor("#00FF00")); sliderValueText.text = "AUTO"
-                        } else {
-                            val focus = cameraController.calculateFocus(progress)
-                            cameraController.currentFocusDistance = focus
-                            btnAf.text = "AF\nM"; btnAf.setTextColor(Color.WHITE); sliderValueText.text = String.format(Locale.US, "%.1f", focus)
-                        }
-                    }
-                    "ISO" -> {
-                        isoProgress = progress
-                        cameraController.isIsoAuto = isAuto
-                        if (isAuto) {
-                            btnIso.text = "ISO\nAUTO"; btnIso.setTextColor(Color.parseColor("#00FF00")); sliderValueText.text = "AUTO"
-                        } else {
-                            val iso = cameraController.calculateIso(progress)
-                            cameraController.currentIso = iso
-                            btnIso.text = "ISO\n$iso"; btnIso.setTextColor(Color.WHITE); sliderValueText.text = "$iso"
-                        }
-                    }
-                    "S" -> {
-                        sProgress = progress
-                        cameraController.isSpeedAuto = isAuto
-                        if (isAuto) {
-                            btnS.text = "S\nAUTO"; btnS.setTextColor(Color.parseColor("#00FF00")); sliderValueText.text = "AUTO"
-                        } else {
-                            val speedNanos = cameraController.calculateSpeed(progress)
-                            cameraController.currentExposureTime = speedNanos
-                            val text = formatShutterText(speedNanos)
-                            btnS.text = "S\n$text"; btnS.setTextColor(Color.WHITE); sliderValueText.text = text
-                        }
-                    }
-                    "EV" -> {
-                        evProgress = progress
-                        val ev = cameraController.calculateEv(progress)
-                        cameraController.currentEv = ev
-                        val sign = if (ev > 0) "+" else ""
-                        btnEv.text = "EV\n$sign$ev"
-                        btnEv.setTextColor(if (isAuto) Color.parseColor("#00FF00") else Color.WHITE)
-                        sliderValueText.text = "$sign$ev"
-                    }
-                    "WB" -> {
-                        wbProgress = progress
-                        val index = (progress / 25).coerceIn(0, 4)
-                        cameraController.currentWb = wbValues[index]
-                        btnWb.text = "WB\n${wbLabels[index]}"
-                        btnWb.setTextColor(if (isAuto) Color.parseColor("#00FF00") else Color.WHITE)
-                        sliderValueText.text = wbLabels[index]
-                    }
-                }
-
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastSettingTime > 32) {
-                    cameraController.applySettings()
-                    lastSettingTime = currentTime
-                } else {
-                    viewFinder.removeCallbacks(applySettingsRunnable)
-                    viewFinder.postDelayed(applySettingsRunnable, 32)
-                }
+                updateSliderUI(progress, true)
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 cameraController.applySettings()
             }
         })
+    }
+
+    // ฟังก์ชันจัดการข้อความไม่ให้ค้าง (บังคับเปลี่ยนข้อความตามโหมดที่เลือกทันที)
+    private fun updateSliderUI(progress: Int, fromUser: Boolean) {
+        val isAuto = if (activeMode == "EV") progress == 50 else progress == 0
+        updateAutoButtonState(isAuto)
+
+        when (activeMode) {
+            "AF" -> {
+                afProgress = progress
+                cameraController.isAfAuto = isAuto
+                if (isAuto) {
+                    btnAf.text = "AF\nAUTO"
+                    btnAf.setTextColor(Color.parseColor("#00FF00"))
+                    sliderValueText.text = "AUTO"
+                } else {
+                    val focus = cameraController.calculateFocus(progress)
+                    cameraController.currentFocusDistance = focus
+                    btnAf.text = "AF\nM"
+                    btnAf.setTextColor(Color.WHITE)
+                    sliderValueText.text = String.format(Locale.US, "%.1f", focus)
+                }
+            }
+            "ISO" -> {
+                isoProgress = progress
+                cameraController.isIsoAuto = isAuto
+                if (isAuto) {
+                    btnIso.text = "ISO\nAUTO"
+                    btnIso.setTextColor(Color.parseColor("#00FF00"))
+                    sliderValueText.text = "AUTO"
+                } else {
+                    val iso = cameraController.calculateIso(progress)
+                    cameraController.currentIso = iso
+                    btnIso.text = "ISO\n$iso"
+                    btnIso.setTextColor(Color.WHITE)
+                    sliderValueText.text = "$iso"
+                }
+            }
+            "S" -> {
+                sProgress = progress
+                cameraController.isSpeedAuto = isAuto
+                if (isAuto) {
+                    btnS.text = "S\nAUTO"
+                    btnS.setTextColor(Color.parseColor("#00FF00"))
+                    sliderValueText.text = "AUTO"
+                } else {
+                    val speedNanos = cameraController.calculateSpeed(progress)
+                    cameraController.currentExposureTime = speedNanos
+                    val text = formatShutterText(speedNanos)
+                    btnS.text = "S\n$text"
+                    btnS.setTextColor(Color.WHITE)
+                    sliderValueText.text = text
+                }
+            }
+            "EV" -> {
+                evProgress = progress
+                val ev = cameraController.calculateEv(progress)
+                cameraController.currentEv = ev
+                val realEv = ev * cameraController.evStep
+                val sign = if (realEv > 0.01f) "+" else ""
+                val evText = String.format(Locale.US, "%s%.1f", sign, realEv)
+                btnEv.text = "EV\n$evText"
+                btnEv.setTextColor(if (isAuto) Color.parseColor("#00FF00") else Color.WHITE)
+                sliderValueText.text = evText
+            }
+            "WB" -> {
+                wbProgress = progress
+                val mode = cameraController.getWbMode(progress)
+                cameraController.currentWb = mode
+                val label = cameraController.getWbLabel(mode)
+                btnWb.text = "WB\n$label"
+                btnWb.setTextColor(if (isAuto) Color.parseColor("#00FF00") else Color.WHITE)
+                sliderValueText.text = label
+            }
+        }
+
+        if (fromUser) {
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastSettingTime > 32) {
+                cameraController.applySettings()
+                lastSettingTime = currentTime
+            } else {
+                viewFinder.removeCallbacks(applySettingsRunnable)
+                viewFinder.postDelayed(applySettingsRunnable, 32)
+            }
+        }
     }
 
     private fun updateAutoButtonState(isAuto: Boolean) {
@@ -218,14 +233,32 @@ class MainActivity : Activity() {
     private fun toggleSlider(mode: String, currentProgress: Int) {
         if (activeMode == mode) {
             sliderPanel.visibility = View.GONE; activeMode = "NONE"
-            return
+            resetButtonColors(); return
         }
 
         activeMode = mode; sliderPanel.visibility = View.VISIBLE
+        resetButtonColors()
+
+        // เปลี่ยนสีปุ่มเมนูที่กำลังกดอยู่ให้เป็นสีทอง
+        when (mode) {
+            "AF" -> btnAf.setTextColor(Color.parseColor("#FFD700"))
+            "ISO" -> btnIso.setTextColor(Color.parseColor("#FFD700"))
+            "WB" -> btnWb.setTextColor(Color.parseColor("#FFD700"))
+            "S" -> btnS.setTextColor(Color.parseColor("#FFD700"))
+            "EV" -> btnEv.setTextColor(Color.parseColor("#FFD700"))
+        }
+
+        // บังคับเปลี่ยนข้อความทางขวาสุดทันทีก่อนโชว์หลอด
+        updateSliderUI(currentProgress, false)
         settingSeekbar.progress = currentProgress
-        
-        val isAuto = if (mode == "EV") currentProgress == 50 else currentProgress == 0
-        updateAutoButtonState(isAuto)
+    }
+
+    private fun resetButtonColors() {
+        btnAf.setTextColor(if (afProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
+        btnIso.setTextColor(if (isoProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
+        btnWb.setTextColor(if (wbProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
+        btnS.setTextColor(if (sProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
+        btnEv.setTextColor(if (evProgress == 50) Color.parseColor("#00FF00") else Color.WHITE)
     }
 
     override fun onResume() {
@@ -255,7 +288,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         cameraController.closeCamera(); cameraController.stopBackgroundThread()
         sliderPanel.visibility = View.GONE; activeMode = "NONE"
-        super.onPause()
+        resetButtonColors(); super.onPause()
     }
 
     private fun checkPermissionsAndStart() {
