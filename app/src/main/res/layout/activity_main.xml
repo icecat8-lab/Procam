@@ -7,9 +7,24 @@
     <TextureView
         android:id="@+id/view_finder"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true" />
 
-    
+    <TextView
+        android:id="@+id/btn_ratio"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="24dp"
+        android:background="#88000000"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp"
+        android:text="3:4"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
     <LinearLayout
         android:id="@+id/control_panel"
         android:layout_width="match_parent"
@@ -19,7 +34,6 @@
         android:background="#88000000"
         android:paddingTop="8dp">
 
-        
         <LinearLayout
             android:id="@+id/slider_panel"
             android:layout_width="match_parent"
@@ -44,7 +58,6 @@
                 android:layout_height="wrap_content"/>
         </LinearLayout>
 
-        <!-- ปุ่มเมนู 5 อย่าง -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -109,7 +122,6 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- พื้นที่ด้านล่างสำหรับปุ่มชัตเตอร์และแกลเลอรี -->
     <RelativeLayout
         android:id="@+id/bottom_bar"
         android:layout_width="match_parent"
@@ -138,5 +150,4 @@
             android:focusable="true"
             android:background="@drawable/circle_button" />
     </RelativeLayout>
-
 </RelativeLayout>
