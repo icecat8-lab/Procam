@@ -162,13 +162,31 @@ class CameraController(private val context: Context, private val textureView: Te
         }
     }
 
-    fun takePicture() {
-        val camera = cameraDevice ?: return
-        val session = captureSession ?: return
+    fun takePicture(deviceRotation: Int) {
+        val camera = cameraDevice
+        val session = captureSession
+        
+        if (camera == null || session == null) {
+            Toast.makeText(context, "กล้องยังไม่พร้อม โปรดรอสักครู่", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         try {
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             captureBuilder.addTarget(imageReader!!.surface)
             
+            // คำนวณแนวตั้ง/แนวนอน
+            val characteristics = cameraManager.getCameraCharacteristics(camera.id)
+            val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+            val surfaceRotation = when (deviceRotation) {
+                Surface.ROTATION_90 -> 90
+                Surface.ROTATION_180 -> 180
+                Surface.ROTATION_270 -> 270
+                else -> 0
+            }
+            val jpegOrientation = (sensorOrientation - surfaceRotation + 360) % 360
+            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, jpegOrientation)
+
             if (isAfAuto) {
                 captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             } else {
