@@ -20,6 +20,7 @@ class MainActivity : Activity() {
 
     private lateinit var viewFinder: TextureView
     private lateinit var btnCapture: View
+    private lateinit var btnRatio: TextView
     private lateinit var thumbnailView: ImageView
     private lateinit var cameraController: CameraController
 
@@ -33,7 +34,6 @@ class MainActivity : Activity() {
     private lateinit var btnS: TextView
     private lateinit var btnEv: TextView
 
-    // Values Arrays
     private val isoValues = intArrayOf(0, 100, 200, 400, 800, 1600, 3200)
     private val speedValues = longArrayOf(0, 1000000000L/1000, 1000000000L/500, 1000000000L/250, 1000000000L/60, 1000000000L/30, 1000000000L/15, 1000000000L/4)
     private val speedLabels = arrayOf("AUTO", "1/1000", "1/500", "1/250", "1/60", "1/30", "1/15", "1/4")
@@ -46,7 +46,7 @@ class MainActivity : Activity() {
     private var speedIndex = 0
     private var wbIndex = 0
     private var evIndex = 4
-    private var afProgress = 0 // 0 = Auto, 1-100 = Manual
+    private var afProgress = 0
 
     private var latestImageUri: Uri? = null
 
@@ -56,6 +56,7 @@ class MainActivity : Activity() {
 
         viewFinder = findViewById(R.id.view_finder)
         btnCapture = findViewById(R.id.btn_capture)
+        btnRatio = findViewById(R.id.btn_ratio)
         thumbnailView = findViewById(R.id.thumbnail_view)
         
         sliderPanel = findViewById(R.id.slider_panel)
@@ -69,6 +70,13 @@ class MainActivity : Activity() {
         btnEv = findViewById(R.id.btn_ev)
 
         cameraController = CameraController(this, viewFinder)
+
+        btnRatio.setOnClickListener {
+            val newIs16by9 = !cameraController.is16by9
+            btnRatio.text = if (newIs16by9) "9:16" else "3:4"
+            adjustPreviewAspectRatio(newIs16by9)
+            cameraController.switchRatio(newIs16by9)
+        }
 
         cameraController.onImageSaved = { uri ->
             latestImageUri = uri
@@ -89,7 +97,6 @@ class MainActivity : Activity() {
             cameraController.takePicture()
         }
 
-        // Setup Buttons
         btnAf.setOnClickListener { toggleSlider("AF") }
         btnIso.setOnClickListener { toggleSlider("ISO") }
         btnWb.setOnClickListener { toggleSlider("WB") }
@@ -144,6 +151,20 @@ class MainActivity : Activity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+    }
+
+    private fun adjustPreviewAspectRatio(is16by9: Boolean) {
+        val displayMetrics = resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val layoutParams = viewFinder.layoutParams
+        
+        layoutParams.width = screenWidth
+        layoutParams.height = if (is16by9) {
+            (screenWidth * 16 / 9)
+        } else {
+            (screenWidth * 4 / 3)
+        }
+        viewFinder.layoutParams = layoutParams
     }
     
     private fun toggleSlider(mode: String) {
@@ -203,6 +224,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         cameraController.startBackgroundThread()
+        adjustPreviewAspectRatio(cameraController.is16by9)
         if (viewFinder.isAvailable) {
             checkPermissionsAndStart()
         } else {
