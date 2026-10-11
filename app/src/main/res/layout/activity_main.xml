@@ -2,7 +2,7 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/theme_bg_dark">
+    android:background="#000000">
 
     <TextureView
         android:id="@+id/view_finder"
@@ -12,59 +12,51 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        android:background="@drawable/bg_bottom_panel"
-        android:orientation="vertical"
-        android:padding="24dp">
+        android:layout_alignParentTop="true"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:gravity="center"
+        android:background="#44000000">
 
-        <LinearLayout
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/btn_iso"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:layout_marginBottom="32dp">
-            
-            <TextView
-                android:id="@+id/btn_iso"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="ISO\nAUTO"
-                android:textAlignment="center"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/theme_text_primary"
-                android:textSize="14sp" />
-                
-            <TextView
-                android:id="@+id/btn_shutter_speed"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="S\nAUTO"
-                android:textAlignment="center"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/theme_text_primary"
-                android:textSize="14sp" />
-                
-            <TextView
-                android:id="@+id/btn_focus"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="F\nAUTO"
-                android:textAlignment="center"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/theme_text_primary"
-                android:textSize="14sp" />
-                
-        </LinearLayout>
+            android:text="ISO\nAUTO"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textAlignment="center"
+            android:layout_marginEnd="32dp"/>
 
-        <View
-            android:id="@+id/btn_capture"
-            android:layout_width="72dp"
-            android:layout_height="72dp"
-            android:layout_gravity="center"
-            android:background="@drawable/bg_shutter" />
-
+        <TextView
+            android:id="@+id/btn_shutter_speed"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="S\nAUTO"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textAlignment="center" />
     </LinearLayout>
+
+    <ImageView
+        android:id="@+id/thumbnail_view"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentStart="true"
+        android:layout_margin="24dp"
+        android:scaleType="centerCrop"
+        android:background="#44000000"
+        android:clickable="true"
+        android:focusable="true" />
+
+    <View
+        android:id="@+id/btn_capture"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="24dp"
+        android:background="@android:drawable/btn_default" />
+
 </RelativeLayout>
