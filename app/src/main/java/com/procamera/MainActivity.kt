@@ -26,6 +26,7 @@ class MainActivity : Activity() {
     private lateinit var viewFinder: TextureView
     private lateinit var btnCapture: View
     private lateinit var btnRatio: TextView
+    private lateinit var btnFlash: ImageView
     private lateinit var thumbnailView: ImageView
     private lateinit var focusRing: View
     private lateinit var cameraController: CameraController
@@ -60,6 +61,7 @@ class MainActivity : Activity() {
         viewFinder = findViewById(R.id.view_finder)
         btnCapture = findViewById(R.id.btn_capture)
         btnRatio = findViewById(R.id.btn_ratio)
+        btnFlash = findViewById(R.id.btn_flash)
         thumbnailView = findViewById(R.id.thumbnail_view)
         focusRing = findViewById(R.id.focus_ring)
         
@@ -118,9 +120,18 @@ class MainActivity : Activity() {
 
         btnRatio.setOnClickListener {
             val newIs16by9 = !cameraController.is16by9
-            btnRatio.text = if (newIs16by9) "9:16" else "3:4"
+            btnRatio.text = if (newIs16by9) "16:9" else "4:3"
             adjustPreviewAspectRatio(newIs16by9)
             cameraController.switchRatio(newIs16by9)
+        }
+        
+        btnFlash.setOnClickListener {
+            cameraController.isFlashOn = !cameraController.isFlashOn
+            if (cameraController.isFlashOn) {
+                btnFlash.setImageResource(R.drawable.ic_flash_on)
+            } else {
+                btnFlash.setImageResource(R.drawable.ic_flash_off)
+            }
         }
 
         btnAutoToggle.setOnClickListener {
