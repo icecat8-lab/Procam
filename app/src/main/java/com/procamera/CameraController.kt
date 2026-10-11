@@ -19,6 +19,8 @@ import android.view.TextureView
 import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.exp
+import kotlin.math.ln
 
 class CameraController(private val context: Context, private val textureView: TextureView) {
 
@@ -40,6 +42,12 @@ class CameraController(private val context: Context, private val textureView: Te
     var currentWb = CaptureRequest.CONTROL_AWB_MODE_AUTO
     var currentEv = 0
 
+    // Range limits from sensor
+    var minIso = 100; var maxIso = 3200
+    var minExp = 1000000L; var maxExp = 1000000000L // 1ms to 1s
+    var maxFocus = 10f
+    var minEv = -4; var maxEv = 4
+
     var is16by9 = false
     var onImageSaved: ((Uri) -> Unit)? = null
 
@@ -54,9 +62,7 @@ class CameraController(private val context: Context, private val textureView: Te
             backgroundThread?.join()
             backgroundThread = null
             backgroundHandler = null
-        } catch (e: InterruptedException) {
-            Log.e("Camera", "Interrupted")
-        }
+        } catch (e: InterruptedException) { }
     }
 
     fun switchRatio(to16by9: Boolean) {
@@ -72,6 +78,13 @@ class CameraController(private val context: Context, private val textureView: Te
             val cameraId = cameraManager.cameraIdList.firstOrNull { id ->
                 cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
             } ?: return
+
+            // Load Sensor Capabilities for continuous sliders
+            val chars = cameraManager.getCameraCharacteristics(cameraId)
+            chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { minIso = it.lower; maxIso = it.upper }
+            chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { minExp = it.lower; maxExp = it.upper }
+            chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { maxFocus = it }
+            chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { minEv = it.lower; maxEv = it.upper }
 
             val imgWidth = if (is16by9) 1920 else 1440
             val imgHeight = 1080
@@ -89,9 +102,7 @@ class CameraController(private val context: Context, private val textureView: Te
             }, backgroundHandler)
 
             cameraManager.openCamera(cameraId, stateCallback, backgroundHandler)
-        } catch (e: CameraAccessException) {
-            Log.e("CameraController", "Cannot access camera", e)
-        }
+        } catch (e: CameraAccessException) { }
     }
 
     private val stateCallback = object : CameraDevice.StateCallback() {
@@ -100,12 +111,10 @@ class CameraController(private val context: Context, private val textureView: Te
             startPreview()
         }
         override fun onDisconnected(camera: CameraDevice) {
-            camera.close()
-            cameraDevice = null
+            camera.close(); cameraDevice = null
         }
         override fun onError(camera: CameraDevice, error: Int) {
-            camera.close()
-            cameraDevice = null
+            camera.close(); cameraDevice = null
         }
     }
 
@@ -131,10 +140,21 @@ class CameraController(private val context: Context, private val textureView: Te
                 }
                 override fun onConfigureFailed(session: CameraCaptureSession) {}
             }, backgroundHandler)
-        } catch (e: CameraAccessException) {
-            Log.e("CameraController", "Cannot start preview", e)
-        }
+        } catch (e: CameraAccessException) { }
     }
+
+    // Continuous Math Helpers
+    fun calculateIso(progress: Int): Int = minIso + ((maxIso - minIso) * (progress / 100f)).toInt()
+    
+    fun calculateSpeed(progress: Int): Long {
+        val logMin = ln(minExp.toDouble())
+        val logMax = ln(maxExp.toDouble())
+        return exp(logMin + ((logMax - logMin) * (progress / 100f))).toLong()
+    }
+    
+    fun calculateFocus(progress: Int): Float = maxFocus * (progress / 100f)
+    
+    fun calculateEv(progress: Int): Int = minEv + ((maxEv - minEv) * (progress / 100f)).toInt()
 
     fun applySettings() {
         val builder = previewRequestBuilder ?: return
@@ -157,9 +177,7 @@ class CameraController(private val context: Context, private val textureView: Te
 
             builder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
             captureSession?.setRepeatingRequest(builder.build(), null, backgroundHandler)
-        } catch (e: Exception) {
-            Log.e("CameraController", "Failed to apply settings", e)
-        }
+        } catch (e: Exception) { }
     }
 
     fun takePicture(deviceRotation: Int) {
@@ -175,7 +193,6 @@ class CameraController(private val context: Context, private val textureView: Te
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             captureBuilder.addTarget(imageReader!!.surface)
             
-            // คำนวณแนวตั้ง/แนวนอน
             val characteristics = cameraManager.getCameraCharacteristics(camera.id)
             val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
             val surfaceRotation = when (deviceRotation) {
@@ -204,7 +221,6 @@ class CameraController(private val context: Context, private val textureView: Te
             }
 
             captureBuilder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
-
             session.stopRepeating()
             session.capture(captureBuilder.build(), object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
@@ -212,9 +228,7 @@ class CameraController(private val context: Context, private val textureView: Te
                     startPreview()
                 }
             }, backgroundHandler)
-        } catch (e: CameraAccessException) {
-            Log.e("CameraController", "Cannot capture image", e)
-        }
+        } catch (e: CameraAccessException) { }
     }
 
     private fun saveImageToGallery(bytes: ByteArray) {
@@ -230,27 +244,17 @@ class CameraController(private val context: Context, private val textureView: Te
         }
 
         val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-        
         try {
             uri?.let { finalUri ->
-                context.contentResolver.openOutputStream(finalUri)?.use { outputStream ->
-                    outputStream.write(bytes)
-                }
-                Handler(context.mainLooper).post {
-                    onImageSaved?.invoke(finalUri)
-                }
+                context.contentResolver.openOutputStream(finalUri)?.use { it.write(bytes) }
+                Handler(context.mainLooper).post { onImageSaved?.invoke(finalUri) }
             }
-        } catch (e: Exception) {
-            Log.e("CameraController", "Error saving image", e)
-        }
+        } catch (e: Exception) { }
     }
 
     fun closeCamera() {
-        captureSession?.close()
-        captureSession = null
-        cameraDevice?.close()
-        cameraDevice = null
-        imageReader?.close()
-        imageReader = null
+        captureSession?.close(); captureSession = null
+        cameraDevice?.close(); cameraDevice = null
+        imageReader?.close(); imageReader = null
     }
 }
