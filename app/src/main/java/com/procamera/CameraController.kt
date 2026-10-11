@@ -7,6 +7,7 @@ import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
 import android.media.ImageReader
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.Handler
@@ -32,7 +33,9 @@ class CameraController(private val context: Context, private val textureView: Te
     
     var isManualMode = false
     var currentIso = 100
-    var currentExposureTime = 1000000000L / 60 // 1/60 วินาที
+    var currentExposureTime = 1000000000L / 60
+
+    var onImageSaved: ((Uri) -> Unit)? = null
 
     fun startBackgroundThread() {
         backgroundThread = HandlerThread("CameraBackground").also { it.start() }
@@ -57,7 +60,6 @@ class CameraController(private val context: Context, private val textureView: Te
                 cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
             } ?: return
 
-            // ตั้งค่าความละเอียดภาพ (ปรับแก้ให้ใหญ่ขึ้นได้ในอนาคต)
             imageReader = ImageReader.newInstance(1920, 1080, ImageFormat.JPEG, 1)
             imageReader?.setOnImageAvailableListener({ reader ->
                 backgroundHandler?.post {
@@ -159,7 +161,6 @@ class CameraController(private val context: Context, private val textureView: Te
         }
     }
 
-    // ฟังก์ชันที่แก้ไขใหม่ ส่งภาพเข้าแกลเลอรีมือถือโดยตรง
     private fun saveImageToGallery(bytes: ByteArray) {
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val filename = "PRO_$timeStamp.jpg"
@@ -175,19 +176,16 @@ class CameraController(private val context: Context, private val textureView: Te
         val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
         
         try {
-            uri?.let {
-                context.contentResolver.openOutputStream(it)?.use { outputStream ->
+            uri?.let { finalUri ->
+                context.contentResolver.openOutputStream(finalUri)?.use { outputStream ->
                     outputStream.write(bytes)
                 }
                 Handler(context.mainLooper).post {
-                    Toast.makeText(context, "บันทึกรูปลงแกลเลอรีแล้ว", Toast.LENGTH_SHORT).show()
+                    onImageSaved?.invoke(finalUri)
                 }
             }
         } catch (e: Exception) {
             Log.e("CameraController", "Error saving image", e)
-            Handler(context.mainLooper).post {
-                Toast.makeText(context, "บันทึกรูปล้มเหลว", Toast.LENGTH_SHORT).show()
-            }
         }
     }
 
