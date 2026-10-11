@@ -40,7 +40,6 @@
         android:background="#B3000000"
         android:paddingTop="8dp">
 
-        <!-- แถบเลื่อนแบบมือถือเรือธง -->
         <LinearLayout
             android:id="@+id/slider_panel"
             android:layout_width="match_parent"
@@ -52,14 +51,13 @@
             android:layout_marginBottom="12dp"
             android:background="@drawable/modern_panel_bg"
             android:paddingHorizontal="16dp"
-            android:paddingVertical="8dp">
+            android:paddingVertical="12dp">
 
-            <!-- ปุ่ม AUTO ที่กดสลับได้ -->
             <TextView
                 android:id="@+id/btn_auto_toggle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="#FFD700"
+                android:textColor="#00FF00"
                 android:textStyle="bold"
                 android:textSize="14sp"
                 android:padding="8dp"
@@ -72,14 +70,16 @@
                 android:layout_height="wrap_content"
                 android:max="100"
                 android:splitTrack="false"
-                android:progressDrawable="@android:drawable/progress_horizontal"
-                android:thumbTint="#FFD700"
-                android:progressTint="#FFD700"/>
+                android:progressDrawable="@drawable/ruler_track"
+                android:thumb="@drawable/ruler_thumb"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:minHeight="32dp"
+                android:maxHeight="32dp"/>
 
-            <!-- ตัวเลขแสดงค่าปัจจุบัน -->
             <TextView
                 android:id="@+id/slider_value_text"
-                android:layout_width="55dp"
+                android:layout_width="65dp"
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFF"
                 android:textStyle="bold"
@@ -95,11 +95,11 @@
             android:weightSum="5"
             android:paddingBottom="16dp">
 
-            <TextView android:id="@+id/btn_af" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="AF\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
-            <TextView android:id="@+id/btn_iso" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="ISO\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
-            <TextView android:id="@+id/btn_wb" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="WB\nAWB" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
-            <TextView android:id="@+id/btn_s" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="S\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
-            <TextView android:id="@+id/btn_ev" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="EV\n0.0" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
+            <TextView android:id="@+id/btn_af" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="AF\nAUTO" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
+            <TextView android:id="@+id/btn_iso" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="ISO\nAUTO" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
+            <TextView android:id="@+id/btn_wb" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="WB\nAWB" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
+            <TextView android:id="@+id/btn_s" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="S\nAUTO" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
+            <TextView android:id="@+id/btn_ev" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="EV\n0.0" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
         </LinearLayout>
     </LinearLayout>
 
