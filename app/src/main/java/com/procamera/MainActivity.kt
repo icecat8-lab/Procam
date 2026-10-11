@@ -120,7 +120,7 @@ class MainActivity : Activity() {
             }
         })
         
-        // เซ็ตสีปุ่มเริ่มต้นทั้งหมดเป็นสีขาว
+        
         resetButtonColors()
     }
 
@@ -128,7 +128,7 @@ class MainActivity : Activity() {
         val isAuto = if (activeMode == "EV") progress == 50 else progress == 0
         updateAutoButtonState(isAuto)
 
-        // อัปเดตเฉพาะข้อความ ไม่ต้องยุ่งกับสี เพราะสีจัดการผ่าน toggleSlider/resetButtonColors แล้ว
+        
         when (activeMode) {
             "AF" -> {
                 afProgress = progress
@@ -215,7 +215,7 @@ class MainActivity : Activity() {
     }
     
     private fun toggleSlider(mode: String, currentProgress: Int) {
-        // ถ้าย้ำปุ่มเดิมที่เปิดอยู่ ให้ปิดแล้วรีเซ็ตเป็นสีขาวทั้งหมด
+        
         if (activeMode == mode) {
             sliderPanel.visibility = View.GONE
             activeMode = "NONE"
@@ -223,11 +223,11 @@ class MainActivity : Activity() {
             return
         }
         
-        // เปิดโหมดใหม่
+        
         activeMode = mode
         sliderPanel.visibility = View.VISIBLE
         
-        // รีเซ็ตทุกปุ่มเป็นสีขาว แล้วเปลี่ยนแค่ปุ่มที่กำลังเลือกเป็นสีเขียว
+        
         resetButtonColors()
         when (mode) {
             "AF" -> btnAf.setTextColor(Color.parseColor("#00FF00"))
@@ -241,7 +241,7 @@ class MainActivity : Activity() {
         settingSeekbar.progress = currentProgress
     }
 
-    // ฟังก์ชันนี้จะเซ็ตทุกปุ่มให้เป็นสีขาวล้วนเสมอ
+    
     private fun resetButtonColors() {
         btnAf.setTextColor(Color.WHITE)
         btnIso.setTextColor(Color.WHITE)
