@@ -1,22 +1,24 @@
 package com.procamera
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.SurfaceTexture
-import android.hardware.camera2.CaptureRequest
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.TextureView
 import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import android.net.Uri
 import java.util.Locale
 
 class MainActivity : Activity() {
@@ -25,6 +27,7 @@ class MainActivity : Activity() {
     private lateinit var btnCapture: View
     private lateinit var btnRatio: TextView
     private lateinit var thumbnailView: ImageView
+    private lateinit var focusRing: View
     private lateinit var cameraController: CameraController
 
     private lateinit var sliderPanel: LinearLayout
@@ -46,7 +49,10 @@ class MainActivity : Activity() {
     private var lastSettingTime = 0L
     private val applySettingsRunnable = Runnable { cameraController.applySettings() }
     private val mainHandler = Handler(Looper.getMainLooper())
+    
+    private var isFrameLocked = false
 
+    @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -55,6 +61,7 @@ class MainActivity : Activity() {
         btnCapture = findViewById(R.id.btn_capture)
         btnRatio = findViewById(R.id.btn_ratio)
         thumbnailView = findViewById(R.id.thumbnail_view)
+        focusRing = findViewById(R.id.focus_ring)
         
         sliderPanel = findViewById(R.id.slider_panel)
         settingSeekbar = findViewById(R.id.setting_seekbar)
@@ -65,6 +72,27 @@ class MainActivity : Activity() {
         btnEv = findViewById(R.id.btn_ev)
 
         cameraController = CameraController(this, viewFinder)
+
+        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onLongPress(e: MotionEvent) {
+                if (isFrameLocked) {
+                    unlockCameraFrame()
+                } else {
+                    lockCameraFrame(e.x, e.y)
+                }
+            }
+            override fun onSingleTapUp(e: MotionEvent): Boolean {
+                if (isFrameLocked) {
+                    unlockCameraFrame()
+                }
+                return true
+            }
+        })
+
+        viewFinder.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            true
+        }
 
         btnRatio.setOnClickListener {
             val newIs16by9 = !cameraController.is16by9
@@ -120,15 +148,31 @@ class MainActivity : Activity() {
             }
         })
         
-        
         resetButtonColors()
+    }
+    
+    private fun lockCameraFrame(x: Float, y: Float) {
+        isFrameLocked = true
+        focusRing.x = x - (focusRing.width / 2)
+        focusRing.y = y - (focusRing.height / 2)
+        focusRing.visibility = View.VISIBLE
+        
+        cameraController.isAELocked = true
+        cameraController.applySettings()
+    }
+    
+    private fun unlockCameraFrame() {
+        isFrameLocked = false
+        focusRing.visibility = View.GONE
+        
+        cameraController.isAELocked = false
+        cameraController.applySettings()
     }
 
     private fun updateSliderUI(progress: Int, fromUser: Boolean) {
         val isAuto = if (activeMode == "EV") progress == 50 else progress == 0
         updateAutoButtonState(isAuto)
 
-        
         when (activeMode) {
             "AF" -> {
                 afProgress = progress
@@ -215,7 +259,6 @@ class MainActivity : Activity() {
     }
     
     private fun toggleSlider(mode: String, currentProgress: Int) {
-        
         if (activeMode == mode) {
             sliderPanel.visibility = View.GONE
             activeMode = "NONE"
@@ -223,10 +266,8 @@ class MainActivity : Activity() {
             return
         }
         
-        
         activeMode = mode
         sliderPanel.visibility = View.VISIBLE
-        
         
         resetButtonColors()
         when (mode) {
@@ -241,7 +282,6 @@ class MainActivity : Activity() {
         settingSeekbar.progress = currentProgress
     }
 
-    
     private fun resetButtonColors() {
         btnAf.setTextColor(Color.WHITE)
         btnIso.setTextColor(Color.WHITE)
