@@ -40,7 +40,7 @@
         android:background="#88000000"
         android:paddingTop="8dp">
 
-        
+    
         <LinearLayout
             android:id="@+id/slider_panel"
             android:layout_width="match_parent"
@@ -76,30 +76,20 @@
                 android:paddingEnd="16dp"
                 android:minHeight="32dp"
                 android:maxHeight="32dp"/>
-
-            <TextView
-                android:id="@+id/slider_value_text"
-                android:layout_width="65dp"
-                android:layout_height="wrap_content"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:textSize="14sp"
-                android:textAlignment="viewEnd"
-                android:text="AUTO"/>
         </LinearLayout>
 
+        <!-- เปลี่ยนเป็น weightSum="4" เพราะเหลือ 4 เมนู -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:weightSum="5"
+            android:weightSum="4"
             android:paddingBottom="16dp">
 
             <TextView android:id="@+id/btn_af" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="AF\nAUTO" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
             <TextView android:id="@+id/btn_iso" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="ISO\nAUTO" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
-            <TextView android:id="@+id/btn_wb" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="WB\nAWB" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
             <TextView android:id="@+id/btn_s" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="S\nAUTO" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
-            <TextView android:id="@+id/btn_ev" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="EV\n+0.0" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
+            <TextView android:id="@+id/btn_ev" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="EV\n0.0" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
         </LinearLayout>
     </LinearLayout>
 
