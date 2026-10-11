@@ -94,7 +94,8 @@ class MainActivity : Activity() {
         }
 
         btnCapture.setOnClickListener {
-            cameraController.takePicture()
+            val rotation = windowManager.defaultDisplay.rotation
+            cameraController.takePicture(rotation)
         }
 
         btnAf.setOnClickListener { toggleSlider("AF") }
@@ -270,7 +271,11 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         if (requestCode == 100 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            cameraController.openCamera()
+            if (viewFinder.isAvailable) {
+                cameraController.openCamera()
+            } else {
+                viewFinder.surfaceTextureListener = surfaceTextureListener
+            }
         }
     }
 
