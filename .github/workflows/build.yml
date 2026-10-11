@@ -23,6 +23,7 @@ jobs:
       uses: gradle/actions/setup-gradle@v3
       with:
         gradle-version: '8.2'
+        cache-disabled: true
       
     - name: Build Debug APK
       run: gradle :app:assembleDebug
@@ -31,8 +32,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         tag_name: debug-v${{ github.run_number }}
-        name: ProCamera Debug Build
+        name: ProCamera Debug Build #${{ github.run_number }}
         draft: false
         prerelease: true
         files: app/build/outputs/apk/debug/app-debug.apk
-        
