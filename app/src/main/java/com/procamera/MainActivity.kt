@@ -4,29 +4,50 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.graphics.SurfaceTexture
+import android.hardware.camera2.CaptureRequest
 import android.net.Uri
 import android.os.Bundle
 import android.view.TextureView
 import android.view.View
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 
 class MainActivity : Activity() {
 
     private lateinit var viewFinder: TextureView
     private lateinit var btnCapture: View
-    private lateinit var btnIso: TextView
-    private lateinit var btnShutterSpeed: TextView
     private lateinit var thumbnailView: ImageView
     private lateinit var cameraController: CameraController
 
-    private val isoValues = intArrayOf(0, 100, 200, 400, 800, 1600)
-    private val speedValues = longArrayOf(0, 1000000000L/1000, 1000000000L/500, 1000000000L/250, 1000000000L/60, 1000000000L/30)
-    private val speedLabels = arrayOf("AUTO", "1/1000", "1/500", "1/250", "1/60", "1/30")
-    
+    private lateinit var sliderPanel: LinearLayout
+    private lateinit var settingSeekbar: SeekBar
+    private lateinit var sliderValueText: TextView
+
+    private lateinit var btnAf: TextView
+    private lateinit var btnIso: TextView
+    private lateinit var btnWb: TextView
+    private lateinit var btnS: TextView
+    private lateinit var btnEv: TextView
+
+    // Values Arrays
+    private val isoValues = intArrayOf(0, 100, 200, 400, 800, 1600, 3200)
+    private val speedValues = longArrayOf(0, 1000000000L/1000, 1000000000L/500, 1000000000L/250, 1000000000L/60, 1000000000L/30, 1000000000L/15, 1000000000L/4)
+    private val speedLabels = arrayOf("AUTO", "1/1000", "1/500", "1/250", "1/60", "1/30", "1/15", "1/4")
+    private val wbValues = intArrayOf(CaptureRequest.CONTROL_AWB_MODE_AUTO, CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT, CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT, CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT, CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT)
+    private val wbLabels = arrayOf("AWB", "Cloudy", "Day", "Fluor", "Incan")
+    private val evValues = intArrayOf(-4, -3, -2, -1, 0, 1, 2, 3, 4)
+
+    private var activeMode = "NONE"
     private var isoIndex = 0
     private var speedIndex = 0
+    private var wbIndex = 0
+    private var evIndex = 4
+    private var afProgress = 0 // 0 = Auto, 1-100 = Manual
+
     private var latestImageUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,10 +56,18 @@ class MainActivity : Activity() {
 
         viewFinder = findViewById(R.id.view_finder)
         btnCapture = findViewById(R.id.btn_capture)
-        btnIso = findViewById(R.id.btn_iso)
-        btnShutterSpeed = findViewById(R.id.btn_shutter_speed)
         thumbnailView = findViewById(R.id.thumbnail_view)
         
+        sliderPanel = findViewById(R.id.slider_panel)
+        settingSeekbar = findViewById(R.id.setting_seekbar)
+        sliderValueText = findViewById(R.id.slider_value_text)
+
+        btnAf = findViewById(R.id.btn_af)
+        btnIso = findViewById(R.id.btn_iso)
+        btnWb = findViewById(R.id.btn_wb)
+        btnS = findViewById(R.id.btn_s)
+        btnEv = findViewById(R.id.btn_ev)
+
         cameraController = CameraController(this, viewFinder)
 
         cameraController.onImageSaved = { uri ->
@@ -60,32 +89,115 @@ class MainActivity : Activity() {
             cameraController.takePicture()
         }
 
-        btnIso.setOnClickListener {
-            isoIndex = (isoIndex + 1) % isoValues.size
-            updateManualControls()
-        }
+        // Setup Buttons
+        btnAf.setOnClickListener { toggleSlider("AF") }
+        btnIso.setOnClickListener { toggleSlider("ISO") }
+        btnWb.setOnClickListener { toggleSlider("WB") }
+        btnS.setOnClickListener { toggleSlider("S") }
+        btnEv.setOnClickListener { toggleSlider("EV") }
 
-        btnShutterSpeed.setOnClickListener {
-            speedIndex = (speedIndex + 1) % speedValues.size
-            updateManualControls()
-        }
+        settingSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                when (activeMode) {
+                    "AF" -> {
+                        afProgress = progress
+                        val isAuto = progress == 0
+                        btnAf.text = "AF\n${if (isAuto) "AUTO" else "M"}"
+                        sliderValueText.text = if (isAuto) "AUTO" else (progress / 10f).toString()
+                        cameraController.isAfAuto = isAuto
+                        if (!isAuto) cameraController.currentFocusDistance = progress / 10f
+                    }
+                    "ISO" -> {
+                        isoIndex = progress
+                        val isAuto = progress == 0
+                        btnIso.text = "ISO\n${if (isAuto) "AUTO" else isoValues[progress]}"
+                        sliderValueText.text = if (isAuto) "AUTO" else isoValues[progress].toString()
+                        cameraController.isIsoAuto = isAuto
+                        if (!isAuto) cameraController.currentIso = isoValues[progress]
+                    }
+                    "WB" -> {
+                        wbIndex = progress
+                        btnWb.text = "WB\n${wbLabels[progress]}"
+                        sliderValueText.text = wbLabels[progress]
+                        cameraController.currentWb = wbValues[progress]
+                    }
+                    "S" -> {
+                        speedIndex = progress
+                        val isAuto = progress == 0
+                        btnS.text = "S\n${speedLabels[progress]}"
+                        sliderValueText.text = speedLabels[progress]
+                        cameraController.isSpeedAuto = isAuto
+                        if (!isAuto) cameraController.currentExposureTime = speedValues[progress]
+                    }
+                    "EV" -> {
+                        evIndex = progress
+                        val value = evValues[progress]
+                        val sign = if (value > 0) "+" else ""
+                        btnEv.text = "EV\n$sign$value"
+                        sliderValueText.text = "$sign$value"
+                        cameraController.currentEv = value
+                    }
+                }
+                cameraController.applySettings()
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
     }
     
-    private fun updateManualControls() {
-        if (isoIndex == 0 && speedIndex == 0) {
-            cameraController.isManualMode = false
-            btnIso.text = "ISO\nAUTO"
-            btnShutterSpeed.text = "S\nAUTO"
-        } else {
-            cameraController.isManualMode = true
-            
-            if (isoIndex > 0) cameraController.currentIso = isoValues[isoIndex]
-            if (speedIndex > 0) cameraController.currentExposureTime = speedValues[speedIndex]
-            
-            btnIso.text = "ISO\n${if(isoIndex == 0) "AUTO" else isoValues[isoIndex]}"
-            btnShutterSpeed.text = "S\n${speedLabels[speedIndex]}"
+    private fun toggleSlider(mode: String) {
+        if (activeMode == mode) {
+            sliderPanel.visibility = View.GONE
+            activeMode = "NONE"
+            resetButtonColors()
+            return
         }
-        cameraController.applySettings()
+
+        activeMode = mode
+        sliderPanel.visibility = View.VISIBLE
+        resetButtonColors()
+
+        when (mode) {
+            "AF" -> {
+                btnAf.setTextColor(Color.parseColor("#FFD700"))
+                settingSeekbar.max = 100
+                settingSeekbar.progress = afProgress
+                sliderValueText.text = if (afProgress == 0) "AUTO" else (afProgress / 10f).toString()
+            }
+            "ISO" -> {
+                btnIso.setTextColor(Color.parseColor("#FFD700"))
+                settingSeekbar.max = isoValues.size - 1
+                settingSeekbar.progress = isoIndex
+                sliderValueText.text = if (isoIndex == 0) "AUTO" else isoValues[isoIndex].toString()
+            }
+            "WB" -> {
+                btnWb.setTextColor(Color.parseColor("#FFD700"))
+                settingSeekbar.max = wbValues.size - 1
+                settingSeekbar.progress = wbIndex
+                sliderValueText.text = wbLabels[wbIndex]
+            }
+            "S" -> {
+                btnS.setTextColor(Color.parseColor("#FFD700"))
+                settingSeekbar.max = speedValues.size - 1
+                settingSeekbar.progress = speedIndex
+                sliderValueText.text = speedLabels[speedIndex]
+            }
+            "EV" -> {
+                btnEv.setTextColor(Color.parseColor("#FFD700"))
+                settingSeekbar.max = evValues.size - 1
+                settingSeekbar.progress = evIndex
+                sliderValueText.text = if (evValues[evIndex] > 0) "+${evValues[evIndex]}" else evValues[evIndex].toString()
+            }
+        }
+    }
+
+    private fun resetButtonColors() {
+        btnAf.setTextColor(Color.WHITE)
+        btnIso.setTextColor(Color.WHITE)
+        btnWb.setTextColor(Color.WHITE)
+        btnS.setTextColor(Color.WHITE)
+        btnEv.setTextColor(Color.WHITE)
     }
 
     override fun onResume() {
@@ -120,6 +232,9 @@ class MainActivity : Activity() {
     override fun onPause() {
         cameraController.closeCamera()
         cameraController.stopBackgroundThread()
+        sliderPanel.visibility = View.GONE
+        activeMode = "NONE"
+        resetButtonColors()
         super.onPause()
     }
 
