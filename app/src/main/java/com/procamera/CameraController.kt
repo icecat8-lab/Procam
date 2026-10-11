@@ -1,20 +1,21 @@
 package com.procamera
 
 import android.annotation.SuppressLint
+import android.content.ContentValues
 import android.content.Context
 import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
 import android.media.ImageReader
+import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
+import android.provider.MediaStore
 import android.util.Log
 import android.view.Surface
 import android.view.TextureView
 import android.widget.Toast
-import java.io.File
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -56,6 +57,7 @@ class CameraController(private val context: Context, private val textureView: Te
                 cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
             } ?: return
 
+            // ตั้งค่าความละเอียดภาพ (ปรับแก้ให้ใหญ่ขึ้นได้ในอนาคต)
             imageReader = ImageReader.newInstance(1920, 1080, ImageFormat.JPEG, 1)
             imageReader?.setOnImageAvailableListener({ reader ->
                 backgroundHandler?.post {
@@ -63,7 +65,7 @@ class CameraController(private val context: Context, private val textureView: Te
                     val buffer = image.planes[0].buffer
                     val bytes = ByteArray(buffer.remaining())
                     buffer.get(bytes)
-                    saveImage(bytes)
+                    saveImageToGallery(bytes)
                     image.close()
                 }
             }, backgroundHandler)
@@ -157,16 +159,35 @@ class CameraController(private val context: Context, private val textureView: Te
         }
     }
 
-    private fun saveImage(bytes: ByteArray) {
+    // ฟังก์ชันที่แก้ไขใหม่ ส่งภาพเข้าแกลเลอรีมือถือโดยตรง
+    private fun saveImageToGallery(bytes: ByteArray) {
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val file = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "PRO_$timeStamp.jpg")
+        val filename = "PRO_$timeStamp.jpg"
+
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ProCamera")
+            }
+        }
+
+        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        
         try {
-            FileOutputStream(file).use { it.write(bytes) }
-            Handler(context.mainLooper).post {
-                Toast.makeText(context, "Saved: ${file.absolutePath}", Toast.LENGTH_SHORT).show()
+            uri?.let {
+                context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                    outputStream.write(bytes)
+                }
+                Handler(context.mainLooper).post {
+                    Toast.makeText(context, "บันทึกรูปลงแกลเลอรีแล้ว", Toast.LENGTH_SHORT).show()
+                }
             }
         } catch (e: Exception) {
             Log.e("CameraController", "Error saving image", e)
+            Handler(context.mainLooper).post {
+                Toast.makeText(context, "บันทึกรูปล้มเหลว", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
