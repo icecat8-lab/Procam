@@ -28,21 +28,14 @@ jobs:
     - name: Build Debug APK
       run: gradle :app:assembleDebug
 
-    - name: Upload APK to Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: ProCamera-APK
-        path: app/build/outputs/apk/debug/app-debug.apk
-
     - name: Publish to GitHub Releases
       uses: softprops/action-gh-release@v2
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: latest-build
-        name: ProCamera Latest Build
+        tag_name: build-${{ github.run_number }}
+        name: ProCamera Build #${{ github.run_number }}
         draft: false
-        prerelease: true
-        files: |
-          app/build/outputs/apk/debug/app-debug.apk
-          
+        prerelease: false
+        files: app/build/outputs/apk/debug/app-debug.apk
+        
