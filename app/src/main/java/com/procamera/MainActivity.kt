@@ -74,6 +74,18 @@ class MainActivity : Activity() {
         btnEv = findViewById(R.id.btn_ev)
 
         cameraController = CameraController(this, viewFinder)
+        
+        cameraController.onCameraStateUpdated = { focusDist, iso, speedNanos ->
+            if (cameraController.isAfAuto) {
+                btnAf.text = String.format(Locale.US, "AF\n%.1f", focusDist)
+            }
+            if (cameraController.isIsoAuto) {
+                btnIso.text = "ISO\n$iso"
+            }
+            if (cameraController.isSpeedAuto) {
+                btnS.text = "S\n${formatShutterText(speedNanos)}"
+            }
+        }
 
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onLongPress(e: MotionEvent) {
@@ -192,9 +204,7 @@ class MainActivity : Activity() {
             "AF" -> {
                 afProgress = progress
                 cameraController.isAfAuto = isAuto
-                if (isAuto) {
-                    btnAf.text = "AF\nAUTO"
-                } else {
+                if (!isAuto) {
                     val focus = cameraController.calculateFocus(progress)
                     cameraController.currentFocusDistance = focus
                     btnAf.text = String.format(Locale.US, "AF\n%.1f", focus)
@@ -203,9 +213,7 @@ class MainActivity : Activity() {
             "ISO" -> {
                 isoProgress = progress
                 cameraController.isIsoAuto = isAuto
-                if (isAuto) {
-                    btnIso.text = "ISO\nAUTO"
-                } else {
+                if (!isAuto) {
                     val iso = cameraController.calculateIso(progress)
                     cameraController.currentIso = iso
                     btnIso.text = "ISO\n$iso"
@@ -220,9 +228,7 @@ class MainActivity : Activity() {
             "S" -> {
                 sProgress = progress
                 cameraController.isSpeedAuto = isAuto
-                if (isAuto) {
-                    btnS.text = "S\nAUTO"
-                } else {
+                if (!isAuto) {
                     val speedNanos = cameraController.calculateSpeed(progress)
                     cameraController.currentExposureTime = speedNanos
                     btnS.text = "S\n${formatShutterText(speedNanos)}"
