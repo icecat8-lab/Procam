@@ -1,4 +1,4 @@
-name: Build and Release Debug APK
+name: Build Debug APK
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # จำเป็นต้องมีเพื่อให้บอทสร้าง Release ได้
+      contents: write
 
     steps:
     - name: Checkout code
@@ -18,23 +18,20 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
 
-    - name: Generate Gradle Wrapper (Fix Version)
-      run: gradle wrapper --gradle-version 8.2
-
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
       
     - name: Build Debug APK
-      run: ./gradlew assembleDebug
+      run: gradle :app:assembleDebug
 
     - name: Publish to GitHub Releases
       uses: softprops/action-gh-release@v1
       with:
         tag_name: debug-v${{ github.run_number }}
-        name: ProCamera Debug Build #${{ github.run_number }}
-        body: "ไฟล์ติดตั้ง APK แบบ Debug กดดาวน์โหลดที่ Assets ด้านล่างได้เลย"
+        name: ProCamera Debug Build
         draft: false
         prerelease: true
         files: app/build/outputs/apk/debug/app-debug.apk
