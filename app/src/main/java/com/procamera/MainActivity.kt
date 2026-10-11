@@ -26,6 +26,7 @@ class MainActivity : Activity() {
     private lateinit var viewFinder: TextureView
     private lateinit var btnCapture: View
     private lateinit var btnRatio: TextView
+    private lateinit var btnFlash: TextView
     private lateinit var thumbnailView: ImageView
     private lateinit var focusRing: View
     private lateinit var cameraController: CameraController
@@ -60,6 +61,7 @@ class MainActivity : Activity() {
         viewFinder = findViewById(R.id.view_finder)
         btnCapture = findViewById(R.id.btn_capture)
         btnRatio = findViewById(R.id.btn_ratio)
+        btnFlash = findViewById(R.id.btn_flash)
         thumbnailView = findViewById(R.id.thumbnail_view)
         focusRing = findViewById(R.id.focus_ring)
         
@@ -96,9 +98,19 @@ class MainActivity : Activity() {
 
         btnRatio.setOnClickListener {
             val newIs16by9 = !cameraController.is16by9
-            btnRatio.text = if (newIs16by9) "9:16" else "3:4"
+            btnRatio.text = if (newIs16by9) "16:9" else "4:3"
             adjustPreviewAspectRatio(newIs16by9)
             cameraController.switchRatio(newIs16by9)
+        }
+
+        btnFlash.setOnClickListener {
+            cameraController.flashMode = (cameraController.flashMode + 1) % 3
+            when (cameraController.flashMode) {
+                0 -> btnFlash.text = "FLASH\nOFF"
+                1 -> btnFlash.text = "FLASH\nON"
+                2 -> btnFlash.text = "FLASH\nAUTO"
+            }
+            cameraController.applySettings()
         }
 
         btnAutoToggle.setOnClickListener {
@@ -111,16 +123,6 @@ class MainActivity : Activity() {
         cameraController.onImageSaved = { uri ->
             latestImageUri = uri
             thumbnailView.setImageURI(uri)
-        }
-
-        thumbnailView.setOnClickListener {
-            latestImageUri?.let { uri ->
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "image/jpeg")
-                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                }
-                startActivity(intent)
-            }
         }
 
         btnCapture.setOnClickListener {
@@ -260,7 +262,7 @@ class MainActivity : Activity() {
     
     private fun toggleSlider(mode: String, currentProgress: Int) {
         if (activeMode == mode) {
-            sliderPanel.visibility = View.GONE
+            sliderPanel.visibility = View.INVISIBLE
             activeMode = "NONE"
             resetButtonColors()
             return
@@ -299,24 +301,11 @@ class MainActivity : Activity() {
         } else {
             viewFinder.surfaceTextureListener = surfaceTextureListener
         }
-        checkThumbnailExists()
-    }
-
-    private fun checkThumbnailExists() {
-        latestImageUri?.let { uri ->
-            try {
-                val cursor = contentResolver.query(uri, null, null, null, null)
-                if (cursor != null && cursor.moveToFirst()) cursor.close()
-                else { cursor?.close(); latestImageUri = null; thumbnailView.setImageDrawable(null) }
-            } catch (e: Exception) {
-                latestImageUri = null; thumbnailView.setImageDrawable(null)
-            }
-        }
     }
 
     override fun onPause() {
         cameraController.closeCamera(); cameraController.stopBackgroundThread()
-        sliderPanel.visibility = View.GONE; activeMode = "NONE"
+        sliderPanel.visibility = View.INVISIBLE; activeMode = "NONE"
         resetButtonColors(); super.onPause()
     }
 
