@@ -33,13 +33,14 @@ class MainActivity : Activity() {
 
     private lateinit var btnAf: TextView
     private lateinit var btnIso: TextView
+    private lateinit var btnWb: TextView
     private lateinit var btnS: TextView
     private lateinit var btnEv: TextView
 
     private var activeMode = "NONE"
     
-    private var afProgress = 0; private var isoProgress = 0; private var sProgress = 0
-    private var evProgress = 50
+    private var afProgress = 0; private var isoProgress = 0; private var wbProgress = 0
+    private var sProgress = 0; private var evProgress = 50
 
     private var latestImageUri: Uri? = null
     private var lastSettingTime = 0L
@@ -60,13 +61,10 @@ class MainActivity : Activity() {
         btnAutoToggle = findViewById(R.id.btn_auto_toggle)
 
         btnAf = findViewById(R.id.btn_af); btnIso = findViewById(R.id.btn_iso)
-        btnS = findViewById(R.id.btn_s); btnEv = findViewById(R.id.btn_ev)
+        btnWb = findViewById(R.id.btn_wb); btnS = findViewById(R.id.btn_s)
+        btnEv = findViewById(R.id.btn_ev)
 
         cameraController = CameraController(this, viewFinder)
-        
-        
-        cameraController.minEv = -3
-        cameraController.maxEv = 3
 
         btnRatio.setOnClickListener {
             val newIs16by9 = !cameraController.is16by9
@@ -101,15 +99,13 @@ class MainActivity : Activity() {
             val rotation = windowManager.defaultDisplay.rotation
             cameraController.takePicture(rotation)
             
-            
             viewFinder.alpha = 0.5f
-            mainHandler.postDelayed({
-                viewFinder.alpha = 1.0f
-            }, 150)
+            mainHandler.postDelayed({ viewFinder.alpha = 1.0f }, 150)
         }
 
         btnAf.setOnClickListener { toggleSlider("AF", afProgress) }
         btnIso.setOnClickListener { toggleSlider("ISO", isoProgress) }
+        btnWb.setOnClickListener { toggleSlider("WB", wbProgress) }
         btnS.setOnClickListener { toggleSlider("S", sProgress) }
         btnEv.setOnClickListener { toggleSlider("EV", evProgress) }
 
@@ -134,8 +130,7 @@ class MainActivity : Activity() {
                 afProgress = progress
                 cameraController.isAfAuto = isAuto
                 if (isAuto) {
-                    btnAf.text = "AF\nAUTO"
-                    btnAf.setTextColor(Color.parseColor("#00FF00"))
+                    btnAf.text = "AF\nAUTO"; btnAf.setTextColor(Color.parseColor("#00FF00"))
                 } else {
                     val focus = cameraController.calculateFocus(progress)
                     cameraController.currentFocusDistance = focus
@@ -147,35 +142,38 @@ class MainActivity : Activity() {
                 isoProgress = progress
                 cameraController.isIsoAuto = isAuto
                 if (isAuto) {
-                    btnIso.text = "ISO\nAUTO"
-                    btnIso.setTextColor(Color.parseColor("#00FF00"))
+                    btnIso.text = "ISO\nAUTO"; btnIso.setTextColor(Color.parseColor("#00FF00"))
                 } else {
                     val iso = cameraController.calculateIso(progress)
                     cameraController.currentIso = iso
-                    btnIso.text = "ISO\n$iso"
-                    btnIso.setTextColor(Color.WHITE)
+                    btnIso.text = "ISO\n$iso"; btnIso.setTextColor(Color.WHITE)
                 }
+            }
+            "WB" -> {
+                wbProgress = progress
+                val mode = cameraController.getWbMode(progress)
+                cameraController.currentWb = mode
+                val label = cameraController.getWbLabel(mode)
+                btnWb.text = "WB\n$label"
+                btnWb.setTextColor(if (isAuto) Color.parseColor("#00FF00") else Color.WHITE)
             }
             "S" -> {
                 sProgress = progress
                 cameraController.isSpeedAuto = isAuto
                 if (isAuto) {
-                    btnS.text = "S\nAUTO"
-                    btnS.setTextColor(Color.parseColor("#00FF00"))
+                    btnS.text = "S\nAUTO"; btnS.setTextColor(Color.parseColor("#00FF00"))
                 } else {
                     val speedNanos = cameraController.calculateSpeed(progress)
                     cameraController.currentExposureTime = speedNanos
-                    btnS.text = "S\n${formatShutterText(speedNanos)}"
-                    btnS.setTextColor(Color.WHITE)
+                    btnS.text = "S\n${formatShutterText(speedNanos)}"; btnS.setTextColor(Color.WHITE)
                 }
             }
             "EV" -> {
                 evProgress = progress
-                // คำนวณขอบเขต EV จาก -3 ถึง +3
                 val ev = if (progress == 50) 0 else if (progress < 50) -3 + ((progress / 50f) * 3).toInt() else ((progress - 50) / 50f * 3).toInt()
                 cameraController.currentEv = ev
                 val sign = if (ev > 0) "+" else ""
-                btnEv.text = "EV\n$sign$ev.0"
+                btnEv.text = "EV\n$sign$ev"
                 btnEv.setTextColor(if (isAuto) Color.parseColor("#00FF00") else Color.WHITE)
             }
         }
@@ -210,7 +208,6 @@ class MainActivity : Activity() {
             val displayMetrics = resources.displayMetrics
             val screenWidth = displayMetrics.widthPixels
             val layoutParams = viewFinder.layoutParams
-            
             layoutParams.width = screenWidth
             layoutParams.height = if (is16by9) (screenWidth * 16) / 9 else (screenWidth * 4) / 3
             viewFinder.layoutParams = layoutParams
@@ -222,17 +219,16 @@ class MainActivity : Activity() {
             sliderPanel.visibility = View.GONE; activeMode = "NONE"
             resetButtonColors(); return
         }
-
         activeMode = mode; sliderPanel.visibility = View.VISIBLE
         resetButtonColors()
 
         when (mode) {
             "AF" -> btnAf.setTextColor(Color.WHITE)
             "ISO" -> btnIso.setTextColor(Color.WHITE)
+            "WB" -> btnWb.setTextColor(Color.WHITE)
             "S" -> btnS.setTextColor(Color.WHITE)
             "EV" -> btnEv.setTextColor(Color.WHITE)
         }
-
         updateSliderUI(currentProgress, false)
         settingSeekbar.progress = currentProgress
     }
@@ -240,6 +236,7 @@ class MainActivity : Activity() {
     private fun resetButtonColors() {
         btnAf.setTextColor(if (afProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
         btnIso.setTextColor(if (isoProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
+        btnWb.setTextColor(if (wbProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
         btnS.setTextColor(if (sProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
         btnEv.setTextColor(if (evProgress == 50) Color.parseColor("#00FF00") else Color.WHITE)
     }
@@ -259,7 +256,7 @@ class MainActivity : Activity() {
     private fun checkThumbnailExists() {
         latestImageUri?.let { uri ->
             try {
-                val cursor = contentResolver.quให้ไม่เกินull, null, null, null)
+                val cursor = contentResolver.query(uri, null, null, null, null)
                 if (cursor != null && cursor.moveToFirst()) cursor.close()
                 else { cursor?.close(); latestImageUri = null; thumbnailView.setImageDrawable(null) }
             } catch (e: Exception) {
