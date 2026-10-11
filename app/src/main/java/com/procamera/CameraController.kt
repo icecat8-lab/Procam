@@ -42,11 +42,24 @@ class CameraController(private val context: Context, private val textureView: Te
     var currentWb = CaptureRequest.CONTROL_AWB_MODE_AUTO
     var currentEv = 0
 
-    
-    var minIso = 100; var maxIso = 3200
+    // ค่า Default (จะถูกอัปเดตทับด้วยสเปคจริงจาก HAL ตอนเปิดกล้อง)
+    var minIso = 50; var maxIso = 3200
     var minExp = 1000000L; var maxExp = 1000000000L
     var maxFocus = 10f
     var minEv = -3; var maxEv = 3
+    var evStep = 0.333f
+    var supportedWbModes = intArrayOf(CaptureRequest.CONTROL_AWB_MODE_AUTO)
+
+    val wbLabelsMap = mapOf(
+        CaptureRequest.CONTROL_AWB_MODE_AUTO to "AWB",
+        CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT to "Cloud",
+        CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT to "Sun",
+        CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT to "Fluor",
+        CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT to "Incan",
+        CaptureRequest.CONTROL_AWB_MODE_SHADE to "Shade",
+        CaptureRequest.CONTROL_AWB_MODE_TWILIGHT to "Twilgt",
+        CaptureRequest.CONTROL_AWB_MODE_WARM_FLUORESCENT to "Warm"
+    )
 
     var is16by9 = false
     var onImageSaved: ((Uri) -> Unit)? = null
@@ -79,12 +92,19 @@ class CameraController(private val context: Context, private val textureView: Te
                 cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
             } ?: return
 
-            
+            // ดึงสเปคเซนเซอร์กล้องผ่าน HAL แบบไดนามิก
             val chars = cameraManager.getCameraCharacteristics(cameraId)
             chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { minIso = it.lower; maxIso = it.upper }
             chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { minExp = it.lower; maxExp = it.upper }
             chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { maxFocus = it }
             chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { minEv = it.lower; maxEv = it.upper }
+            chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)?.let { evStep = it.toFloat() }
+            
+            chars.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)?.let { modes ->
+                val list = modes.toMutableList()
+                list.remove(CaptureRequest.CONTROL_AWB_MODE_AUTO)
+                supportedWbModes = intArrayOf(CaptureRequest.CONTROL_AWB_MODE_AUTO) + list.toIntArray()
+            }
 
             val imgWidth = if (is16by9) 1920 else 1440
             val imgHeight = 1080
@@ -143,17 +163,40 @@ class CameraController(private val context: Context, private val textureView: Te
         } catch (e: CameraAccessException) { }
     }
 
-    fun calculateIso(progress: Int): Int = minIso + ((maxIso - minIso) * (progress / 100f)).toInt()
-    
-    fun calculateSpeed(progress: Int): Long {
-        val logMin = ln(minExp.toDouble())
-        val logMax = ln(maxExp.toDouble())
-        return exp(logMin + ((logMax - logMin) * (progress / 100f))).toLong()
+    // ฟังก์ชันคำนวณค่าจาก 0-100 ให้ตรงสเปค HAL
+    fun calculateIso(progress: Int): Int {
+        if (progress == 0) return minIso
+        return minIso + ((maxIso - minIso) * ((progress - 1) / 99f)).toInt()
     }
     
-    fun calculateFocus(progress: Int): Float = maxFocus * (progress / 100f)
+    fun calculateSpeed(progress: Int): Long {
+        if (progress == 0) return minExp
+        val logMin = ln(minExp.toDouble())
+        val logMax = ln(maxExp.toDouble())
+        return exp(logMin + ((logMax - logMin) * ((progress - 1) / 99f))).toLong()
+    }
     
-    fun calculateEv(progress: Int): Int = minEv + ((maxEv - minEv) * (progress / 100f)).toInt()
+    fun calculateFocus(progress: Int): Float {
+        if (progress == 0) return 0f
+        return maxFocus * ((progress - 1) / 99f)
+    }
+    
+    fun calculateEv(progress: Int): Int {
+        return if (progress == 50) 0
+        else if (progress < 50) minEv + ((progress / 50f) * (0 - minEv)).toInt()
+        else 0 + (((progress - 50) / 50f) * (maxEv - 0)).toInt()
+    }
+
+    fun getWbMode(progress: Int): Int {
+        if (progress == 0 || supportedWbModes.size <= 1) return CaptureRequest.CONTROL_AWB_MODE_AUTO
+        val maxIdx = supportedWbModes.size - 1
+        val index = 1 + ((progress - 1) * (maxIdx - 1) / 99)
+        return supportedWbModes[index]
+    }
+    
+    fun getWbLabel(mode: Int): String {
+        return wbLabelsMap[mode] ?: "WB"
+    }
 
     fun applySettings() {
         val builder = previewRequestBuilder ?: return
