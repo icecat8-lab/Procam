@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.provider.MediaStore
 import android.view.Surface
 import android.view.TextureView
@@ -33,6 +34,7 @@ class CameraController(private val context: Context, private val textureView: Te
 
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
+    private val mainUIHandler = Handler(Looper.getMainLooper())
     
     var isIsoAuto = true
     var currentIso = 100
@@ -53,7 +55,7 @@ class CameraController(private val context: Context, private val textureView: Te
     
     var supportedWbModes = intArrayOf(CaptureRequest.CONTROL_AWB_MODE_AUTO)
     val wbLabelsMap = mapOf(
-        CaptureRequest.CONTROL_AWB_MODE_AUTO to "AWB",
+        CaptureRequest.CONTROL_AWB_MODE_AUTO to "AUTO",
         CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT to "Cloud",
         CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT to "Sun",
         CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT to "Fluor",
@@ -65,6 +67,18 @@ class CameraController(private val context: Context, private val textureView: Te
 
     var is16by9 = false
     var onImageSaved: ((Uri) -> Unit)? = null
+    var onCameraStateUpdated: ((Float, Int, Long) -> Unit)? = null
+
+    private val previewCallback = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+            val focusDist = result.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: 0f
+            val iso = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: 0
+            val expTime = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
+            mainUIHandler.post {
+                onCameraStateUpdated?.invoke(focusDist, iso, expTime)
+            }
+        }
+    }
 
     fun startBackgroundThread() {
         backgroundThread = HandlerThread("CameraBackground").also { it.start() }
@@ -198,7 +212,7 @@ class CameraController(private val context: Context, private val textureView: Te
             session.capture(builder.build(), null, backgroundHandler)
             
             builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE)
-            session.setRepeatingRequest(builder.build(), null, backgroundHandler)
+            session.setRepeatingRequest(builder.build(), previewCallback, backgroundHandler)
         } catch (e: Exception) { }
     }
 
@@ -251,7 +265,7 @@ class CameraController(private val context: Context, private val textureView: Te
             builder.set(CaptureRequest.CONTROL_AE_LOCK, isAELocked)
             builder.set(CaptureRequest.CONTROL_AWB_LOCK, isAELocked)
 
-            captureSession?.setRepeatingRequest(builder.build(), null, backgroundHandler)
+            captureSession?.setRepeatingRequest(builder.build(), previewCallback, backgroundHandler)
         } catch (e: Exception) { }
     }
 
@@ -331,7 +345,7 @@ class CameraController(private val context: Context, private val textureView: Te
         try {
             uri?.let { finalUri ->
                 context.contentResolver.openOutputStream(finalUri)?.use { it.write(bytes) }
-                Handler(context.mainLooper).post { onImageSaved?.invoke(finalUri) }
+                mainUIHandler.post { onImageSaved?.invoke(finalUri) }
             }
         } catch (e: Exception) { }
     }
