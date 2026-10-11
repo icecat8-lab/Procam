@@ -9,7 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- แถบควบคุม (อยู่เหนือปุ่มถ่าย) -->
+    
     <LinearLayout
         android:id="@+id/control_panel"
         android:layout_width="match_parent"
@@ -19,7 +19,7 @@
         android:background="#88000000"
         android:paddingTop="8dp">
 
-        <!-- แถบเลื่อนปรับค่า (ซ่อนไว้ เริ่มต้น) -->
+        
         <LinearLayout
             android:id="@+id/slider_panel"
             android:layout_width="match_parent"
