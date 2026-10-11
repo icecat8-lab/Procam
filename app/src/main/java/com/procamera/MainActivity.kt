@@ -92,8 +92,8 @@ class MainActivity : Activity() {
                 isFrameLocked = true
                 focusRing.visibility = View.VISIBLE
                 focusRing.setBackgroundResource(R.drawable.focus_frame_locked)
-                focusRing.x = e.x - (focusRing.width / 2)
-                focusRing.y = e.y - (focusRing.height / 2)
+                focusRing.x = (e.x + viewFinder.x) - (focusRing.width / 2)
+                focusRing.y = (e.y + viewFinder.y) - (focusRing.height / 2)
                 
                 cameraController.isAELocked = true
                 cameraController.applySettings()
@@ -102,6 +102,9 @@ class MainActivity : Activity() {
 
         viewFinder.setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
+            
+            val touchX = event.x + viewFinder.x
+            val touchY = event.y + viewFinder.y
             
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -112,13 +115,13 @@ class MainActivity : Activity() {
                     }
                     focusRing.visibility = View.VISIBLE
                     focusRing.setBackgroundResource(R.drawable.focus_frame)
-                    focusRing.x = event.x - (focusRing.width / 2)
-                    focusRing.y = event.y - (focusRing.height / 2)
+                    focusRing.x = touchX - (focusRing.width / 2)
+                    focusRing.y = touchY - (focusRing.height / 2)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (!isFrameLocked) {
-                        focusRing.x = event.x - (focusRing.width / 2)
-                        focusRing.y = event.y - (focusRing.height / 2)
+                        focusRing.x = touchX - (focusRing.width / 2)
+                        focusRing.y = touchY - (focusRing.height / 2)
                     }
                 }
                 MotionEvent.ACTION_UP -> {
