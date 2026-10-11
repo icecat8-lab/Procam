@@ -33,55 +33,53 @@
         android:elevation="4dp"/>
 
     <LinearLayout
-        android:id="@+id/slider_panel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_above="@+id/bottom_container"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:visibility="gone"
-        android:background="#88000000"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="12dp">
-
-        <TextView
-            android:id="@+id/btn_auto_toggle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="#00FF00"
-            android:textSize="14sp"
-            android:paddingEnd="16dp"
-            android:text="AUTO"
-            android:fontFamily="sans-serif-medium"/>
-
-        <SeekBar
-            android:id="@+id/setting_seekbar"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="wrap_content"
-            android:max="100"
-            android:splitTrack="false"
-            android:progressDrawable="@drawable/ruler_track"
-            android:thumb="@drawable/ruler_thumb"
-            android:minHeight="24dp"
-            android:maxHeight="24dp"/>
-    </LinearLayout>
-
-    <LinearLayout
         android:id="@+id/bottom_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         android:orientation="vertical"
-        android:background="#FF000000">
+        android:background="#FF000000"
+        android:paddingTop="12dp">
+
+        <LinearLayout
+            android:id="@+id/slider_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone"
+            android:layout_marginHorizontal="28dp"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:id="@+id/btn_auto_toggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#00FF00"
+                android:textSize="14sp"
+                android:paddingEnd="16dp"
+                android:text="AUTO"
+                android:fontFamily="sans-serif-medium"/>
+
+            <SeekBar
+                android:id="@+id/setting_seekbar"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:max="100"
+                android:splitTrack="false"
+                android:progressDrawable="@drawable/ruler_track"
+                android:thumb="@drawable/ruler_thumb"
+                android:minHeight="16dp"
+                android:maxHeight="16dp"/>
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:weightSum="5"
-            android:paddingTop="12dp"
-            android:paddingBottom="8dp">
+            android:paddingBottom="12dp">
 
             <TextView android:id="@+id/btn_af" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="AF\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp" android:fontFamily="sans-serif"/>
             <TextView android:id="@+id/btn_iso" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="ISO\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp" android:fontFamily="sans-serif"/>
