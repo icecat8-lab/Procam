@@ -41,6 +41,7 @@ class CameraController(private val context: Context, private val textureView: Te
     var currentWb = CaptureRequest.CONTROL_AWB_MODE_AUTO
     var currentEv = 0
     var isAELocked = false
+    var flashMode = 0 // 0=OFF, 1=ON, 2=AUTO
 
     var minIso = 50; var maxIso = 3200
     var minExp = 1000000L; var maxExp = 1000000000L
@@ -187,6 +188,25 @@ class CameraController(private val context: Context, private val textureView: Te
     
     fun getWbLabel(mode: Int): String = wbLabelsMap[mode] ?: "WB"
 
+    private fun applyFlashState(builder: CaptureRequest.Builder, isCapture: Boolean = false) {
+        if (!isIsoAuto || !isSpeedAuto) {
+            builder.set(CaptureRequest.FLASH_MODE, if (flashMode == 1) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF)
+        } else {
+            when (flashMode) {
+                0 -> {
+                    builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                    builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
+                }
+                1 -> {
+                    builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH)
+                }
+                2 -> {
+                    builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH)
+                }
+            }
+        }
+    }
+
     fun applySettings() {
         val builder = previewRequestBuilder ?: return
         try {
@@ -205,10 +225,10 @@ class CameraController(private val context: Context, private val textureView: Te
                 builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                 builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
             }
+            
+            applyFlashState(builder)
 
             builder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
-            
-            // ล็อก AE/AWB
             builder.set(CaptureRequest.CONTROL_AE_LOCK, isAELocked)
             builder.set(CaptureRequest.CONTROL_AWB_LOCK, isAELocked)
 
@@ -255,6 +275,8 @@ class CameraController(private val context: Context, private val textureView: Te
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                 captureBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
             }
+            
+            applyFlashState(captureBuilder, true)
 
             captureBuilder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
             captureBuilder.set(CaptureRequest.CONTROL_AE_LOCK, isAELocked)
