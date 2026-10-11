@@ -119,53 +119,54 @@ class MainActivity : Activity() {
                 cameraController.applySettings()
             }
         })
+        
+        // เซ็ตสีปุ่มเริ่มต้นทั้งหมดเป็นสีขาว
+        resetButtonColors()
     }
 
     private fun updateSliderUI(progress: Int, fromUser: Boolean) {
         val isAuto = if (activeMode == "EV") progress == 50 else progress == 0
         updateAutoButtonState(isAuto)
 
+        // อัปเดตเฉพาะข้อความ ไม่ต้องยุ่งกับสี เพราะสีจัดการผ่าน toggleSlider/resetButtonColors แล้ว
         when (activeMode) {
             "AF" -> {
                 afProgress = progress
                 cameraController.isAfAuto = isAuto
                 if (isAuto) {
-                    btnAf.text = "AF\nAUTO"; btnAf.setTextColor(Color.parseColor("#00FF00"))
+                    btnAf.text = "AF\nAUTO"
                 } else {
                     val focus = cameraController.calculateFocus(progress)
                     cameraController.currentFocusDistance = focus
                     btnAf.text = String.format(Locale.US, "AF\n%.1f", focus)
-                    btnAf.setTextColor(Color.WHITE)
                 }
             }
             "ISO" -> {
                 isoProgress = progress
                 cameraController.isIsoAuto = isAuto
                 if (isAuto) {
-                    btnIso.text = "ISO\nAUTO"; btnIso.setTextColor(Color.parseColor("#00FF00"))
+                    btnIso.text = "ISO\nAUTO"
                 } else {
                     val iso = cameraController.calculateIso(progress)
                     cameraController.currentIso = iso
-                    btnIso.text = "ISO\n$iso"; btnIso.setTextColor(Color.WHITE)
+                    btnIso.text = "ISO\n$iso"
                 }
             }
             "WB" -> {
                 wbProgress = progress
                 val mode = cameraController.getWbMode(progress)
                 cameraController.currentWb = mode
-                val label = cameraController.getWbLabel(mode)
-                btnWb.text = "WB\n$label"
-                btnWb.setTextColor(if (isAuto) Color.parseColor("#00FF00") else Color.WHITE)
+                btnWb.text = "WB\n${cameraController.getWbLabel(mode)}"
             }
             "S" -> {
                 sProgress = progress
                 cameraController.isSpeedAuto = isAuto
                 if (isAuto) {
-                    btnS.text = "S\nAUTO"; btnS.setTextColor(Color.parseColor("#00FF00"))
+                    btnS.text = "S\nAUTO"
                 } else {
                     val speedNanos = cameraController.calculateSpeed(progress)
                     cameraController.currentExposureTime = speedNanos
-                    btnS.text = "S\n${formatShutterText(speedNanos)}"; btnS.setTextColor(Color.WHITE)
+                    btnS.text = "S\n${formatShutterText(speedNanos)}"
                 }
             }
             "EV" -> {
@@ -173,8 +174,7 @@ class MainActivity : Activity() {
                 val ev = if (progress == 50) 0 else if (progress < 50) -3 + ((progress / 50f) * 3).toInt() else ((progress - 50) / 50f * 3).toInt()
                 cameraController.currentEv = ev
                 val sign = if (ev > 0) "+" else ""
-                btnEv.text = "EV\n$sign$ev"
-                btnEv.setTextColor(if (isAuto) Color.parseColor("#00FF00") else Color.WHITE)
+                btnEv.text = if(ev == 0) "EV\n0" else "EV\n$sign$ev"
             }
         }
 
@@ -215,30 +215,39 @@ class MainActivity : Activity() {
     }
     
     private fun toggleSlider(mode: String, currentProgress: Int) {
+        // ถ้าย้ำปุ่มเดิมที่เปิดอยู่ ให้ปิดแล้วรีเซ็ตเป็นสีขาวทั้งหมด
         if (activeMode == mode) {
-            sliderPanel.visibility = View.GONE; activeMode = "NONE"
-            resetButtonColors(); return
+            sliderPanel.visibility = View.GONE
+            activeMode = "NONE"
+            resetButtonColors()
+            return
         }
-        activeMode = mode; sliderPanel.visibility = View.VISIBLE
+        
+        // เปิดโหมดใหม่
+        activeMode = mode
+        sliderPanel.visibility = View.VISIBLE
+        
+        // รีเซ็ตทุกปุ่มเป็นสีขาว แล้วเปลี่ยนแค่ปุ่มที่กำลังเลือกเป็นสีเขียว
         resetButtonColors()
-
         when (mode) {
-            "AF" -> btnAf.setTextColor(Color.WHITE)
-            "ISO" -> btnIso.setTextColor(Color.WHITE)
-            "WB" -> btnWb.setTextColor(Color.WHITE)
-            "S" -> btnS.setTextColor(Color.WHITE)
-            "EV" -> btnEv.setTextColor(Color.WHITE)
+            "AF" -> btnAf.setTextColor(Color.parseColor("#00FF00"))
+            "ISO" -> btnIso.setTextColor(Color.parseColor("#00FF00"))
+            "WB" -> btnWb.setTextColor(Color.parseColor("#00FF00"))
+            "S" -> btnS.setTextColor(Color.parseColor("#00FF00"))
+            "EV" -> btnEv.setTextColor(Color.parseColor("#00FF00"))
         }
+        
         updateSliderUI(currentProgress, false)
         settingSeekbar.progress = currentProgress
     }
 
+    // ฟังก์ชันนี้จะเซ็ตทุกปุ่มให้เป็นสีขาวล้วนเสมอ
     private fun resetButtonColors() {
-        btnAf.setTextColor(if (afProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
-        btnIso.setTextColor(if (isoProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
-        btnWb.setTextColor(if (wbProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
-        btnS.setTextColor(if (sProgress == 0) Color.parseColor("#00FF00") else Color.WHITE)
-        btnEv.setTextColor(if (evProgress == 50) Color.parseColor("#00FF00") else Color.WHITE)
+        btnAf.setTextColor(Color.WHITE)
+        btnIso.setTextColor(Color.WHITE)
+        btnWb.setTextColor(Color.WHITE)
+        btnS.setTextColor(Color.WHITE)
+        btnEv.setTextColor(Color.WHITE)
     }
 
     override fun onResume() {
