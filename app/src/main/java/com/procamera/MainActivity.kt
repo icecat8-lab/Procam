@@ -2,11 +2,14 @@ package com.procamera
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
+import android.net.Uri
 import android.os.Bundle
 import android.view.TextureView
 import android.view.View
+import android.widget.ImageView
 import android.widget.TextView
 
 class MainActivity : Activity() {
@@ -15,6 +18,7 @@ class MainActivity : Activity() {
     private lateinit var btnCapture: View
     private lateinit var btnIso: TextView
     private lateinit var btnShutterSpeed: TextView
+    private lateinit var thumbnailView: ImageView
     private lateinit var cameraController: CameraController
 
     private val isoValues = intArrayOf(0, 100, 200, 400, 800, 1600)
@@ -23,6 +27,7 @@ class MainActivity : Activity() {
     
     private var isoIndex = 0
     private var speedIndex = 0
+    private var latestImageUri: Uri? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,8 +37,24 @@ class MainActivity : Activity() {
         btnCapture = findViewById(R.id.btn_capture)
         btnIso = findViewById(R.id.btn_iso)
         btnShutterSpeed = findViewById(R.id.btn_shutter_speed)
+        thumbnailView = findViewById(R.id.thumbnail_view)
         
         cameraController = CameraController(this, viewFinder)
+
+        cameraController.onImageSaved = { uri ->
+            latestImageUri = uri
+            thumbnailView.setImageURI(uri)
+        }
+
+        thumbnailView.setOnClickListener {
+            latestImageUri?.let { uri ->
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "image/jpeg")
+                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                }
+                startActivity(intent)
+            }
+        }
 
         btnCapture.setOnClickListener {
             cameraController.takePicture()
