@@ -33,9 +33,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: build-${{ github.run_number }}
-        name: ProCamera Build #${{ github.run_number }}
+        tag_name: latest
+        name: ProCamera Build
         draft: false
         prerelease: false
         files: app/build/outputs/apk/debug/app-debug.apk
-        
