@@ -40,12 +40,12 @@ class CameraController(private val context: Context, private val textureView: Te
     var currentFocusDistance = 0f
     var currentWb = CaptureRequest.CONTROL_AWB_MODE_AUTO
     var currentEv = 0
+    var isAELocked = false
 
-    // ตัวแปรรับค่าจาก HAL
     var minIso = 50; var maxIso = 3200
     var minExp = 1000000L; var maxExp = 1000000000L
     var maxFocus = 10f
-    var isManualSupported = false // เช็คสิทธิ์การปรับแต่งระดับฮาร์ดแวร์
+    var isManualSupported = false
     
     var supportedWbModes = intArrayOf(CaptureRequest.CONTROL_AWB_MODE_AUTO)
     val wbLabelsMap = mapOf(
@@ -91,17 +91,8 @@ class CameraController(private val context: Context, private val textureView: Te
             } ?: return
 
             val chars = cameraManager.getCameraCharacteristics(cameraId)
-            
-            
             val capabilities = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
             isManualSupported = capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true
-            
-            if (!isManualSupported) {
-                Handler(context.mainLooper).post {
-                    Toast.makeText(context, "ข้อควรระวัง: เซนเซอร์กล้องนี้อาจไม่รองรับการปรับค่า Manual 100% ตามข้อจำกัดผู้ผลิต", Toast.LENGTH_LONG).show()
-                }
-            }
-
             
             chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { minIso = it.lower; maxIso = it.upper }
             chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { minExp = it.lower; maxExp = it.upper }
@@ -216,6 +207,11 @@ class CameraController(private val context: Context, private val textureView: Te
             }
 
             builder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
+            
+            // ล็อก AE/AWB
+            builder.set(CaptureRequest.CONTROL_AE_LOCK, isAELocked)
+            builder.set(CaptureRequest.CONTROL_AWB_LOCK, isAELocked)
+
             captureSession?.setRepeatingRequest(builder.build(), null, backgroundHandler)
         } catch (e: Exception) { }
     }
@@ -225,7 +221,7 @@ class CameraController(private val context: Context, private val textureView: Te
         val session = captureSession
         
         if (camera == null || session == null) {
-            Toast.makeText(context, "กล้องยังไม่พร้อม โปรดรอสักครู่", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "กล้องยังไม่พร้อม", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -261,6 +257,9 @@ class CameraController(private val context: Context, private val textureView: Te
             }
 
             captureBuilder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
+            captureBuilder.set(CaptureRequest.CONTROL_AE_LOCK, isAELocked)
+            captureBuilder.set(CaptureRequest.CONTROL_AWB_LOCK, isAELocked)
+            
             session.stopRepeating()
             session.capture(captureBuilder.build(), object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
