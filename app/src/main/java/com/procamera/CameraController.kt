@@ -140,6 +140,22 @@ class CameraController(private val context: Context, private val textureView: Te
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             captureBuilder.addTarget(imageReader!!.surface)
             
+            // คำนวณองศาการหมุนภาพให้ตรงกับหน้าจอ
+            val rotation = textureView.display?.rotation ?: Surface.ROTATION_0
+            val characteristics = cameraManager.getCameraCharacteristics(camera.id)
+            val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+            
+            val deviceOrientation = when (rotation) {
+                Surface.ROTATION_0 -> 0
+                Surface.ROTATION_90 -> 90
+                Surface.ROTATION_180 -> 180
+                Surface.ROTATION_270 -> 270
+                else -> 0
+            }
+            
+            val jpegOrientation = (sensorOrientation - deviceOrientation + 360) % 360
+            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, jpegOrientation)
+            
             if (isManualMode) {
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
                 captureBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, currentIso)
