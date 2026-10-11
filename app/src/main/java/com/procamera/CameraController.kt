@@ -33,16 +33,14 @@ class CameraController(private val context: Context, private val textureView: Te
     
     var isIsoAuto = true
     var currentIso = 100
-    
     var isSpeedAuto = true
     var currentExposureTime = 1000000000L / 60
-
     var isAfAuto = true
     var currentFocusDistance = 0f
-
     var currentWb = CaptureRequest.CONTROL_AWB_MODE_AUTO
     var currentEv = 0
 
+    var is16by9 = false
     var onImageSaved: ((Uri) -> Unit)? = null
 
     fun startBackgroundThread() {
@@ -61,6 +59,13 @@ class CameraController(private val context: Context, private val textureView: Te
         }
     }
 
+    fun switchRatio(to16by9: Boolean) {
+        if (this.is16by9 == to16by9) return
+        this.is16by9 = to16by9
+        closeCamera()
+        openCamera()
+    }
+
     @SuppressLint("MissingPermission")
     fun openCamera() {
         try {
@@ -68,7 +73,10 @@ class CameraController(private val context: Context, private val textureView: Te
                 cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
             } ?: return
 
-            imageReader = ImageReader.newInstance(1920, 1080, ImageFormat.JPEG, 1)
+            val imgWidth = if (is16by9) 1920 else 1440
+            val imgHeight = 1080
+
+            imageReader = ImageReader.newInstance(imgWidth, imgHeight, ImageFormat.JPEG, 1)
             imageReader?.setOnImageAvailableListener({ reader ->
                 backgroundHandler?.post {
                     val image = reader.acquireLatestImage()
@@ -104,7 +112,10 @@ class CameraController(private val context: Context, private val textureView: Te
     private fun startPreview() {
         val camera = cameraDevice ?: return
         val texture = textureView.surfaceTexture ?: return
-        texture.setDefaultBufferSize(1920, 1080)
+        
+        val prevWidth = if (is16by9) 1920 else 1440
+        val prevHeight = 1080
+        texture.setDefaultBufferSize(prevWidth, prevHeight)
         
         val surface = Surface(texture)
         val imageSurface = imageReader?.surface ?: return
@@ -128,7 +139,6 @@ class CameraController(private val context: Context, private val textureView: Te
     fun applySettings() {
         val builder = previewRequestBuilder ?: return
         try {
-            // AF
             if (isAfAuto) {
                 builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             } else {
@@ -136,7 +146,6 @@ class CameraController(private val context: Context, private val textureView: Te
                 builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, currentFocusDistance)
             }
 
-            // ISO & Speed & EV
             if (!isIsoAuto || !isSpeedAuto) {
                 builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
                 if (!isIsoAuto) builder.set(CaptureRequest.SENSOR_SENSITIVITY, currentIso)
@@ -146,9 +155,7 @@ class CameraController(private val context: Context, private val textureView: Te
                 builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
             }
 
-            // WB
             builder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
-
             captureSession?.setRepeatingRequest(builder.build(), null, backgroundHandler)
         } catch (e: Exception) {
             Log.e("CameraController", "Failed to apply settings", e)
