@@ -43,8 +43,8 @@ class CameraController(private val context: Context, private val textureView: Te
     var currentEv = 0
 
     
-    var minIso = 50; var maxIso = 19000
-    var minExp = 1000000000L / 15000; var maxExp = 30000000000L 
+    var minIso = 100; var maxIso = 3200
+    var minExp = 1000000L; var maxExp = 1000000000L
     var maxFocus = 10f
     var minEv = -3; var maxEv = 3
 
@@ -78,6 +78,13 @@ class CameraController(private val context: Context, private val textureView: Te
             val cameraId = cameraManager.cameraIdList.firstOrNull { id ->
                 cameraManager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
             } ?: return
+
+            
+            val chars = cameraManager.getCameraCharacteristics(cameraId)
+            chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { minIso = it.lower; maxIso = it.upper }
+            chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { minExp = it.lower; maxExp = it.upper }
+            chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { maxFocus = it }
+            chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { minEv = it.lower; maxEv = it.upper }
 
             val imgWidth = if (is16by9) 1920 else 1440
             val imgHeight = 1080
@@ -247,4 +254,6 @@ class CameraController(private val context: Context, private val textureView: Te
     fun closeCamera() {
         captureSession?.close(); captureSession = null
         cameraDevice?.close(); cameraDevice = null
-        imageReaจะพยายามอิงค่านี้ให้ใกล้เคียงสุดตามเซนเซอร์มือถือ
+        imageReader?.close(); imageReader = null
+    }
+}
