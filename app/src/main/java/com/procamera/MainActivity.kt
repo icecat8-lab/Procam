@@ -28,6 +28,7 @@ class MainActivity : Activity() {
     private lateinit var sliderPanel: LinearLayout
     private lateinit var settingSeekbar: SeekBar
     private lateinit var sliderValueText: TextView
+    private lateinit var btnAutoToggle: TextView
 
     private lateinit var btnAf: TextView
     private lateinit var btnIso: TextView
@@ -43,6 +44,10 @@ class MainActivity : Activity() {
     private var wbProgress = 0; private var evProgress = 50
 
     private var latestImageUri: Uri? = null
+    
+    // ป้องกันกล้องค้างตอนเลื่อนแถบ
+    private var lastSettingTime = 0L
+    private val applySettingsRunnable = Runnable { cameraController.applySettings() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,6 +61,7 @@ class MainActivity : Activity() {
         sliderPanel = findViewById(R.id.slider_panel)
         settingSeekbar = findViewById(R.id.setting_seekbar)
         sliderValueText = findViewById(R.id.slider_value_text)
+        btnAutoToggle = findViewById(R.id.btn_auto_toggle)
 
         btnAf = findViewById(R.id.btn_af); btnIso = findViewById(R.id.btn_iso)
         btnWb = findViewById(R.id.btn_wb); btnS = findViewById(R.id.btn_s)
@@ -68,6 +74,15 @@ class MainActivity : Activity() {
             btnRatio.text = if (newIs16by9) "9:16" else "3:4"
             adjustPreviewAspectRatio(newIs16by9)
             cameraController.switchRatio(newIs16by9)
+        }
+
+        // ระบบกดปุ่ม AUTO
+        btnAutoToggle.setOnClickListener {
+            if (activeMode == "EV") {
+                settingSeekbar.progress = 50 // EV 0.0
+            } else {
+                settingSeekbar.progress = 0
+            }
         }
 
         cameraController.onImageSaved = { uri ->
@@ -99,7 +114,10 @@ class MainActivity : Activity() {
         settingSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (!fromUser) return
-                val isAuto = progress == 0
+                
+                val isAuto = if (activeMode == "EV") progress == 50 else progress == 0
+                updateAutoButtonState(isAuto)
+
                 when (activeMode) {
                     "AF" -> {
                         afProgress = progress
@@ -149,11 +167,32 @@ class MainActivity : Activity() {
                         btnWb.text = "WB\n${wbLabels[index]}"; sliderValueText.text = wbLabels[index]
                     }
                 }
-                cameraController.applySettings()
+
+                // ระบบกันกระตุก (Throttle 30fps)
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastSettingTime > 32) {
+                    cameraController.applySettings()
+                    lastSettingTime = currentTime
+                } else {
+                    viewFinder.removeCallbacks(applySettingsRunnable)
+                    viewFinder.postDelayed(applySettingsRunnable, 32)
+                }
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                cameraController.applySettings() // ชัวร์ว่าค่าสุดท้ายถูกใช้แน่นอนตอนปล่อยนิ้ว
+            }
         })
+    }
+
+    private fun updateAutoButtonState(isAuto: Boolean) {
+        if (isAuto) {
+            btnAutoToggle.setTextColor(Color.parseColor("#FFD700"))
+            btnAutoToggle.alpha = 1.0f
+        } else {
+            btnAutoToggle.setTextColor(Color.WHITE)
+            btnAutoToggle.alpha = 0.7f
+        }
     }
 
     private fun formatShutterText(nanos: Long): String {
@@ -161,14 +200,17 @@ class MainActivity : Activity() {
         return if (sec >= 0.5) String.format(Locale.US, "%.1fs", sec) else "1/${(1.0 / sec).toInt()}"
     }
 
+    // แก้บัคภาพยืดโดยใช้ post เพื่อรอจอวาดขนาดเสร็จก่อน
     private fun adjustPreviewAspectRatio(is16by9: Boolean) {
-        val displayMetrics = resources.displayMetrics
-        val screenWidth = displayMetrics.widthPixels
-        val layoutParams = viewFinder.layoutParams
-        
-        layoutParams.width = screenWidth
-        layoutParams.height = if (is16by9) (screenWidth * 16) / 9 else (screenWidth * 4) / 3
-        viewFinder.layoutParams = layoutParams
+        viewFinder.post {
+            val displayMetrics = resources.displayMetrics
+            val screenWidth = displayMetrics.widthPixels
+            val layoutParams = viewFinder.layoutParams
+            
+            layoutParams.width = screenWidth
+            layoutParams.height = if (is16by9) (screenWidth * 16) / 9 else (screenWidth * 4) / 3
+            viewFinder.layoutParams = layoutParams
+        }
     }
     
     private fun toggleSlider(mode: String, currentProgress: Int) {
@@ -179,6 +221,9 @@ class MainActivity : Activity() {
 
         activeMode = mode; sliderPanel.visibility = View.VISIBLE
         resetButtonColors(); settingSeekbar.progress = currentProgress
+        
+        val isAuto = if (mode == "EV") currentProgress == 50 else currentProgress == 0
+        updateAutoButtonState(isAuto)
 
         when (mode) {
             "AF" -> btnAf.setTextColor(Color.parseColor("#FFD700"))
@@ -198,9 +243,12 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         cameraController.startBackgroundThread()
-        adjustPreviewAspectRatio(cameraController.is16by9)
-        if (viewFinder.isAvailable) checkPermissionsAndStart()
-        else viewFinder.surfaceTextureListener = surfaceTextureListener
+        if (viewFinder.isAvailable) {
+            adjustPreviewAspectRatio(cameraController.is16by9)
+            checkPermissionsAndStart()
+        } else {
+            viewFinder.surfaceTextureListener = surfaceTextureListener
+        }
         checkThumbnailExists()
     }
 
@@ -238,7 +286,10 @@ class MainActivity : Activity() {
     }
 
     private val surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-        override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) = checkPermissionsAndStart()
+        override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+            adjustPreviewAspectRatio(cameraController.is16by9)
+            checkPermissionsAndStart()
+        }
         override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
         override fun onSurfaceTextureDestroyed(surface: SurfaceTexture) = true
         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
