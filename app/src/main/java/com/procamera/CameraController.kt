@@ -5,7 +5,9 @@ import android.content.ContentValues
 import android.content.Context
 import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
+import android.graphics.Rect
 import android.hardware.camera2.*
+import android.hardware.camera2.params.MeteringRectangle
 import android.media.ImageReader
 import android.net.Uri
 import android.os.Build
@@ -41,12 +43,12 @@ class CameraController(private val context: Context, private val textureView: Te
     var currentWb = CaptureRequest.CONTROL_AWB_MODE_AUTO
     var currentEv = 0
     var isAELocked = false
-    var flashMode = 0 // 0=OFF, 1=ON, 2=AUTO
 
     var minIso = 50; var maxIso = 3200
     var minExp = 1000000L; var maxExp = 1000000000L
     var maxFocus = 10f
     var isManualSupported = false
+    private var sensorArraySize: Rect? = null
     
     var supportedWbModes = intArrayOf(CaptureRequest.CONTROL_AWB_MODE_AUTO)
     val wbLabelsMap = mapOf(
@@ -95,6 +97,7 @@ class CameraController(private val context: Context, private val textureView: Te
             val capabilities = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
             isManualSupported = capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true
             
+            sensorArraySize = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
             chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { minIso = it.lower; maxIso = it.upper }
             chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { minExp = it.lower; maxExp = it.upper }
             chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { maxFocus = it }
@@ -162,6 +165,42 @@ class CameraController(private val context: Context, private val textureView: Te
         } catch (e: CameraAccessException) { }
     }
 
+    fun triggerFocusAtPoint(x: Float, y: Float, viewWidth: Int, viewHeight: Int) {
+        val sensorRect = sensorArraySize ?: return
+        val builder = previewRequestBuilder ?: return
+        val session = captureSession ?: return
+
+        try {
+            val percentX = x / viewWidth
+            val percentY = y / viewHeight
+            
+            val centerX = (percentX * sensorRect.width()).toInt()
+            val centerY = (percentY * sensorRect.height()).toInt()
+            val halfW = sensorRect.width() / 10
+            val halfH = sensorRect.height() / 10
+            
+            val focusRect = Rect(
+                maxOf(sensorRect.left, centerX - halfW),
+                maxOf(sensorRect.top, centerY - halfH),
+                minOf(sensorRect.right, centerX + halfW),
+                minOf(sensorRect.bottom, centerY + halfH)
+            )
+            
+            val meteringRect = MeteringRectangle(focusRect, MeteringRectangle.METERING_WEIGHT_MAX)
+            val meteringArray = arrayOf(meteringRect)
+
+            builder.set(CaptureRequest.CONTROL_AF_REGIONS, meteringArray)
+            builder.set(CaptureRequest.CONTROL_AE_REGIONS, meteringArray)
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
+            
+            builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START)
+            session.capture(builder.build(), null, backgroundHandler)
+            
+            builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE)
+            session.setRepeatingRequest(builder.build(), null, backgroundHandler)
+        } catch (e: Exception) { }
+    }
+
     fun calculateIso(progress: Int): Int {
         if (progress == 0) return minIso
         return minIso + ((maxIso - minIso) * ((progress - 1) / 99f)).toInt()
@@ -188,25 +227,6 @@ class CameraController(private val context: Context, private val textureView: Te
     
     fun getWbLabel(mode: Int): String = wbLabelsMap[mode] ?: "WB"
 
-    private fun applyFlashState(builder: CaptureRequest.Builder, isCapture: Boolean = false) {
-        if (!isIsoAuto || !isSpeedAuto) {
-            builder.set(CaptureRequest.FLASH_MODE, if (flashMode == 1) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF)
-        } else {
-            when (flashMode) {
-                0 -> {
-                    builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-                    builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
-                }
-                1 -> {
-                    builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH)
-                }
-                2 -> {
-                    builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH)
-                }
-            }
-        }
-    }
-
     fun applySettings() {
         val builder = previewRequestBuilder ?: return
         try {
@@ -225,10 +245,9 @@ class CameraController(private val context: Context, private val textureView: Te
                 builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                 builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
             }
-            
-            applyFlashState(builder)
 
             builder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
+            
             builder.set(CaptureRequest.CONTROL_AE_LOCK, isAELocked)
             builder.set(CaptureRequest.CONTROL_AWB_LOCK, isAELocked)
 
@@ -275,8 +294,6 @@ class CameraController(private val context: Context, private val textureView: Te
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                 captureBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
             }
-            
-            applyFlashState(captureBuilder, true)
 
             captureBuilder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
             captureBuilder.set(CaptureRequest.CONTROL_AE_LOCK, isAELocked)
