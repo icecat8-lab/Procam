@@ -24,43 +24,38 @@
             android:visibility="gone" />
     </RelativeLayout>
 
-    <!-- ปุ่มแฟลช ซ้ายบน -->
-    <TextView
-        android:id="@+id/btn_flash"
-        android:layout_width="wrap_content"
+    <!-- เมนูด้านบน ถอดพื้นหลังออก เอาแค่เงาและไอคอนสายฟ้า -->
+    <RelativeLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentTop="true"
-        android:layout_alignParentStart="true"
-        android:layout_marginTop="24dp"
-        android:layout_marginStart="16dp"
-        android:background="@drawable/rect_bg"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="6dp"
-        android:text="FLASH\nOFF"
-        android:textAlignment="center"
-        android:textColor="#FFFFFF"
-        android:textSize="10sp"
-        android:fontFamily="sans-serif-medium"
-        android:elevation="4dp"/>
+        android:paddingTop="32dp"
+        android:paddingHorizontal="24dp">
+        
+        <ImageView
+            android:id="@+id/btn_flash"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_alignParentStart="true"
+            android:src="@drawable/ic_flash_off"
+            android:clickable="true"
+            android:focusable="true"/>
 
-    <!-- ปุ่มสัดส่วนภาพ ตรงกลาง (เปลี่ยนเป็น 4:3) -->
-    <TextView
-        android:id="@+id/btn_ratio"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignParentTop="true"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="24dp"
-        android:background="@drawable/rect_bg"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="6dp"
-        android:text="4:3"
-        android:textColor="#FFFFFF"
-        android:textSize="12sp"
-        android:fontFamily="sans-serif-medium"
-        android:elevation="4dp"/>
+        <TextView
+            android:id="@+id/btn_ratio"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:text="4:3"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:fontFamily="sans-serif-medium"
+            android:shadowColor="#000000"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="4" />
+    </RelativeLayout>
 
-    <!-- พื้นที่คอนโทรลด้านล่าง -->
     <LinearLayout
         android:id="@+id/bottom_container"
         android:layout_width="match_parent"
@@ -71,14 +66,13 @@
         android:gravity="center"
         android:paddingTop="12dp">
 
-        <!-- แถบไม้บรรทัด -->
         <LinearLayout
             android:id="@+id/slider_panel"
             android:layout_width="match_parent"
-            android:layout_height="32dp"
+            android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:visibility="invisible"
+            android:visibility="gone"
             android:layout_marginHorizontal="32dp"
             android:layout_marginBottom="12dp">
 
@@ -93,6 +87,7 @@
                 android:gravity="center"
                 android:fontFamily="sans-serif-medium"/>
 
+            <!-- แถบสเกลเรือธง (ถอดพื้นหลังออก ใส่ขีดแบ่ง) -->
             <SeekBar
                 android:id="@+id/setting_seekbar"
                 android:layout_width="0dp"
@@ -100,10 +95,11 @@
                 android:layout_height="wrap_content"
                 android:max="100"
                 android:splitTrack="false"
-                android:progressDrawable="@drawable/ruler_track"
+                android:progressDrawable="@android:color/transparent"
+                android:tickMark="@drawable/tick_mark"
                 android:thumb="@drawable/ruler_thumb"
-                android:minHeight="16dp"
-                android:maxHeight="16dp"/>
+                android:minHeight="24dp"
+                android:maxHeight="24dp"/>
         </LinearLayout>
 
         <LinearLayout
@@ -123,8 +119,7 @@
 
         <RelativeLayout
             android:layout_width="match_parent"
-            android:layout_height="100dp"
-            android:layout_marginBottom="16dp">
+            android:layout_height="100dp">
 
             <ImageView
                 android:id="@+id/thumbnail_view"
