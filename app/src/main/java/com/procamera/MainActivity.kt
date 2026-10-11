@@ -96,6 +96,25 @@ class MainActivity : Activity() {
         } else {
             viewFinder.surfaceTextureListener = surfaceTextureListener
         }
+        checkThumbnailExists()
+    }
+
+    private fun checkThumbnailExists() {
+        latestImageUri?.let { uri ->
+            try {
+                val cursor = contentResolver.query(uri, null, null, null, null)
+                if (cursor != null && cursor.moveToFirst()) {
+                    cursor.close()
+                } else {
+                    cursor?.close()
+                    latestImageUri = null
+                    thumbnailView.setImageDrawable(null)
+                }
+            } catch (e: Exception) {
+                latestImageUri = null
+                thumbnailView.setImageDrawable(null)
+            }
+        }
     }
 
     override fun onPause() {
