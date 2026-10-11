@@ -31,9 +31,17 @@ class CameraController(private val context: Context, private val textureView: Te
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
     
-    var isManualMode = false
+    var isIsoAuto = true
     var currentIso = 100
+    
+    var isSpeedAuto = true
     var currentExposureTime = 1000000000L / 60
+
+    var isAfAuto = true
+    var currentFocusDistance = 0f
+
+    var currentWb = CaptureRequest.CONTROL_AWB_MODE_AUTO
+    var currentEv = 0
 
     var onImageSaved: ((Uri) -> Unit)? = null
 
@@ -118,16 +126,30 @@ class CameraController(private val context: Context, private val textureView: Te
     }
 
     fun applySettings() {
+        val builder = previewRequestBuilder ?: return
         try {
-            if (isManualMode) {
-                previewRequestBuilder!!.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
-                previewRequestBuilder!!.set(CaptureRequest.SENSOR_SENSITIVITY, currentIso)
-                previewRequestBuilder!!.set(CaptureRequest.SENSOR_EXPOSURE_TIME, currentExposureTime)
+            // AF
+            if (isAfAuto) {
+                builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             } else {
-                previewRequestBuilder!!.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+                builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, currentFocusDistance)
             }
-            previewRequestBuilder!!.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-            captureSession?.setRepeatingRequest(previewRequestBuilder!!.build(), null, backgroundHandler)
+
+            // ISO & Speed & EV
+            if (!isIsoAuto || !isSpeedAuto) {
+                builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+                if (!isIsoAuto) builder.set(CaptureRequest.SENSOR_SENSITIVITY, currentIso)
+                if (!isSpeedAuto) builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, currentExposureTime)
+            } else {
+                builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
+            }
+
+            // WB
+            builder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
+
+            captureSession?.setRepeatingRequest(builder.build(), null, backgroundHandler)
         } catch (e: Exception) {
             Log.e("CameraController", "Failed to apply settings", e)
         }
@@ -140,30 +162,23 @@ class CameraController(private val context: Context, private val textureView: Te
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             captureBuilder.addTarget(imageReader!!.surface)
             
-            // คำนวณองศาการหมุนภาพให้ตรงกับหน้าจอ
-            val rotation = textureView.display?.rotation ?: Surface.ROTATION_0
-            val characteristics = cameraManager.getCameraCharacteristics(camera.id)
-            val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
-            
-            val deviceOrientation = when (rotation) {
-                Surface.ROTATION_0 -> 0
-                Surface.ROTATION_90 -> 90
-                Surface.ROTATION_180 -> 180
-                Surface.ROTATION_270 -> 270
-                else -> 0
+            if (isAfAuto) {
+                captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            } else {
+                captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+                captureBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, currentFocusDistance)
             }
-            
-            val jpegOrientation = (sensorOrientation - deviceOrientation + 360) % 360
-            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, jpegOrientation)
-            
-            if (isManualMode) {
+
+            if (!isIsoAuto || !isSpeedAuto) {
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
-                captureBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, currentIso)
-                captureBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, currentExposureTime)
+                if (!isIsoAuto) captureBuilder.set(CaptureRequest.SENSOR_SENSITIVITY, currentIso)
+                if (!isSpeedAuto) captureBuilder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, currentExposureTime)
             } else {
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                captureBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
             }
-            captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+
+            captureBuilder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
 
             session.stopRepeating()
             session.capture(captureBuilder.build(), object : CameraCaptureSession.CaptureCallback() {
