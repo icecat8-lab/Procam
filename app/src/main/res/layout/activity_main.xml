@@ -4,9 +4,11 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
+
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:layout_above="@+id/bottom_container"
         android:gravity="center">
         
         <TextureView
@@ -15,7 +17,7 @@
             android:layout_height="wrap_content" />
     </RelativeLayout>
 
-    
+
     <TextView
         android:id="@+id/btn_ratio"
         android:layout_width="wrap_content"
@@ -29,97 +31,95 @@
         android:text="3:4"
         android:textColor="#FFFFFF"
         android:textSize="12sp"
-        android:textStyle="bold"/>
+        android:textStyle="bold"
+        android:elevation="4dp"/>
 
     
     <LinearLayout
-        android:id="@+id/control_panel"
+        android:id="@+id/slider_panel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_above="@id/bottom_bar"
-        android:orientation="vertical"
+        android:layout_above="@+id/bottom_container"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:visibility="gone"
         android:background="#88000000"
-        android:paddingTop="4dp">
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp">
 
-        <LinearLayout
-            android:id="@+id/slider_panel"
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/btn_auto_toggle"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:visibility="gone"
-            android:layout_marginHorizontal="16dp"
-            android:layout_marginBottom="8dp"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="8dp">
+            android:textColor="#00FF00"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:paddingEnd="16dp"
+            android:text="AUTO"/>
 
-            <TextView
-                android:id="@+id/btn_auto_toggle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#00FF00"
-                android:textStyle="bold"
-                android:textSize="14sp"
-                android:paddingEnd="16dp"
-                android:text="AUTO"/>
+        <SeekBar
+            android:id="@+id/setting_seekbar"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:splitTrack="false"
+            android:progressDrawable="@drawable/ruler_track"
+            android:thumb="@drawable/ruler_thumb"
+            android:minHeight="24dp"
+            android:maxHeight="24dp"/>
+    </LinearLayout>
 
-            <SeekBar
-                android:id="@+id/setting_seekbar"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:max="100"
-                android:splitTrack="false"
-                android:progressDrawable="@drawable/ruler_track"
-                android:thumb="@drawable/ruler_thumb"
-                android:minHeight="24dp"
-                android:maxHeight="24dp"/>
-        </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/bottom_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:orientation="vertical"
+        android:background="#FF000000">
+
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:weightSum="5"
+            android:paddingTop="12dp"
             android:paddingBottom="8dp">
 
-            <TextView android:id="@+id/btn_af" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="AF\nAUTO" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
-            <TextView android:id="@+id/btn_iso" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="ISO\nAUTO" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
-            <TextView android:id="@+id/btn_wb" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="WB\nAWB" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
-            <TextView android:id="@+id/btn_s" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="S\nAUTO" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
-            <TextView android:id="@+id/btn_ev" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="EV\n0" android:textColor="#00FF00" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
+            <TextView android:id="@+id/btn_af" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="AF\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
+            <TextView android:id="@+id/btn_iso" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="ISO\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
+            <TextView android:id="@+id/btn_wb" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="WB\nAWB" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
+            <TextView android:id="@+id/btn_s" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="S\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
+            <TextView android:id="@+id/btn_ev" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="EV\n0" android:textColor="#FFFFFF" android:textSize="12sp" android:textAlignment="center" android:padding="8dp"/>
         </LinearLayout>
+
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="100dp">
+
+            <ImageView
+                android:id="@+id/thumbnail_view"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_centerVertical="true"
+                android:layout_alignParentStart="true"
+                android:layout_marginStart="32dp"
+                android:scaleType="centerCrop"
+                android:background="#44FFFFFF"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <View
+                android:id="@+id/btn_capture"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_centerInParent="true"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="@drawable/circle_button" />
+        </RelativeLayout>
     </LinearLayout>
-
-
-    <RelativeLayout
-        android:id="@+id/bottom_bar"
-        android:layout_width="match_parent"
-        android:layout_height="100dp"
-        android:layout_alignParentBottom="true"
-        android:background="#FF000000">
-
-
-        <ImageView
-            android:id="@+id/thumbnail_view"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_centerVertical="true"
-            android:layout_alignParentStart="true"
-            android:layout_marginStart="32dp"
-            android:scaleType="centerCrop"
-            android:background="#44FFFFFF"
-            android:clickable="true"
-            android:focusable="true" />
-
-
-        <View
-            android:id="@+id/btn_capture"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:layout_centerInParent="true"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="@drawable/circle_button" />
-    </RelativeLayout>
 </RelativeLayout>
