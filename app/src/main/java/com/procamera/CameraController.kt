@@ -43,6 +43,7 @@ class CameraController(private val context: Context, private val textureView: Te
     var currentWb = CaptureRequest.CONTROL_AWB_MODE_AUTO
     var currentEv = 0
     var isAELocked = false
+    var isFlashOn = false
 
     var minIso = 50; var maxIso = 3200
     var minExp = 1000000L; var maxExp = 1000000000L
@@ -247,7 +248,6 @@ class CameraController(private val context: Context, private val textureView: Te
             }
 
             builder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
-            
             builder.set(CaptureRequest.CONTROL_AE_LOCK, isAELocked)
             builder.set(CaptureRequest.CONTROL_AWB_LOCK, isAELocked)
 
@@ -293,6 +293,12 @@ class CameraController(private val context: Context, private val textureView: Te
             } else {
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                 captureBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
+            }
+            
+            if (isFlashOn) {
+                captureBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_SINGLE)
+            } else {
+                captureBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
             }
 
             captureBuilder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
