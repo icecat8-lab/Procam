@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/theme_bg_dark">
+
+    <TextureView
+        android:id="@+id/view_finder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:background="@drawable/bg_bottom_panel"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginBottom="32dp">
+            
+            <TextView
+                android:id="@+id/btn_iso"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="ISO\nAUTO"
+                android:textAlignment="center"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/theme_text_primary"
+                android:textSize="14sp" />
+                
+            <TextView
+                android:id="@+id/btn_shutter_speed"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="S\nAUTO"
+                android:textAlignment="center"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/theme_text_primary"
+                android:textSize="14sp" />
+                
+            <TextView
+                android:id="@+id/btn_focus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="F\nAUTO"
+                android:textAlignment="center"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/theme_text_primary"
+                android:textSize="14sp" />
+                
+        </LinearLayout>
+
+        <View
+            android:id="@+id/btn_capture"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_shutter" />
+
+    </LinearLayout>
+</RelativeLayout>

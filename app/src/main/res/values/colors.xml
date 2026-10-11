@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- สีพื้นหลังหลักแบบในภาพ -->
+    <color name="theme_bg_dark">#121212</color>
+    <!-- สีกล่องหรือปุ่ม (อ่อนกว่าพื้นหลังเล็กน้อย) -->
+    <color name="theme_surface">#1E1E1E</color>
+    <!-- สีตัวหนังสือหลัก (ขาว) -->
+    <color name="theme_text_primary">#FFFFFF</color>
+    <!-- สีตัวหนังสือรอง (เทา) -->
+    <color name="theme_text_secondary">#A0A0A0</color>
+</resources>
