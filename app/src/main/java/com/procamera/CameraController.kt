@@ -13,7 +13,6 @@ import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
 import android.provider.MediaStore
-import android.util.Log
 import android.view.Surface
 import android.view.TextureView
 import android.widget.Toast
@@ -42,9 +41,11 @@ class CameraController(private val context: Context, private val textureView: Te
     var currentWb = CaptureRequest.CONTROL_AWB_MODE_AUTO
     var currentEv = 0
 
+    // ตัวแปรรับค่าจาก HAL
     var minIso = 50; var maxIso = 3200
     var minExp = 1000000L; var maxExp = 1000000000L
     var maxFocus = 10f
+    var isManualSupported = false // เช็คสิทธิ์การปรับแต่งระดับฮาร์ดแวร์
     
     var supportedWbModes = intArrayOf(CaptureRequest.CONTROL_AWB_MODE_AUTO)
     val wbLabelsMap = mapOf(
@@ -90,6 +91,18 @@ class CameraController(private val context: Context, private val textureView: Te
             } ?: return
 
             val chars = cameraManager.getCameraCharacteristics(cameraId)
+            
+            
+            val capabilities = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
+            isManualSupported = capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true
+            
+            if (!isManualSupported) {
+                Handler(context.mainLooper).post {
+                    Toast.makeText(context, "ข้อควรระวัง: เซนเซอร์กล้องนี้อาจไม่รองรับการปรับค่า Manual 100% ตามข้อจำกัดผู้ผลิต", Toast.LENGTH_LONG).show()
+                }
+            }
+
+            
             chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { minIso = it.lower; maxIso = it.upper }
             chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { minExp = it.lower; maxExp = it.upper }
             chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { maxFocus = it }
