@@ -24,7 +24,6 @@
             android:visibility="gone" />
     </RelativeLayout>
 
-    <!-- เมนูด้านบน ถอดพื้นหลังออก เอาแค่เงาและไอคอนสายฟ้า -->
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -87,7 +86,6 @@
                 android:gravity="center"
                 android:fontFamily="sans-serif-medium"/>
 
-            <!-- แถบสเกลเรือธง (ถอดพื้นหลังออก ใส่ขีดแบ่ง) -->
             <SeekBar
                 android:id="@+id/setting_seekbar"
                 android:layout_width="0dp"
@@ -110,10 +108,10 @@
             android:gravity="center"
             android:paddingBottom="12dp">
 
-            <TextView android:id="@+id/btn_af" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="AF\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:gravity="center" android:textAlignment="center" android:padding="8dp" android:fontFamily="sans-serif"/>
-            <TextView android:id="@+id/btn_iso" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="ISO\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:gravity="center" android:textAlignment="center" android:padding="8dp" android:fontFamily="sans-serif"/>
-            <TextView android:id="@+id/btn_wb" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="WB\nAWB" android:textColor="#FFFFFF" android:textSize="12sp" android:gravity="center" android:textAlignment="center" android:padding="8dp" android:fontFamily="sans-serif"/>
-            <TextView android:id="@+id/btn_s" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="S\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:gravity="center" android:textAlignment="center" android:padding="8dp" android:fontFamily="sans-serif"/>
+            <TextView android:id="@+id/btn_af" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="AF\n-" android:textColor="#FFFFFF" android:textSize="12sp" android:gravity="center" android:textAlignment="center" android:padding="8dp" android:fontFamily="sans-serif"/>
+            <TextView android:id="@+id/btn_iso" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="ISO\n-" android:textColor="#FFFFFF" android:textSize="12sp" android:gravity="center" android:textAlignment="center" android:padding="8dp" android:fontFamily="sans-serif"/>
+            <TextView android:id="@+id/btn_wb" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="WB\nAUTO" android:textColor="#FFFFFF" android:textSize="12sp" android:gravity="center" android:textAlignment="center" android:padding="8dp" android:fontFamily="sans-serif"/>
+            <TextView android:id="@+id/btn_s" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="S\n-" android:textColor="#FFFFFF" android:textSize="12sp" android:gravity="center" android:textAlignment="center" android:padding="8dp" android:fontFamily="sans-serif"/>
             <TextView android:id="@+id/btn_ev" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="EV\n0" android:textColor="#FFFFFF" android:textSize="12sp" android:gravity="center" android:textAlignment="center" android:padding="8dp" android:fontFamily="sans-serif"/>
         </LinearLayout>
 
