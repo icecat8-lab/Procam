@@ -12,6 +12,20 @@ find_library(
         log
 )
 
+# Enable optimizations + NEON SIMD where available
+target_compile_options(procamera PRIVATE
+        -O3
+        -ffast-math
+        -funroll-loops
+        -Wall
+        -Wno-unused-variable
+)
+
+# ARM 32-bit: enable NEON
+if(${ANDROID_ABI} STREQUAL "armeabi-v7a")
+    target_compile_options(procamera PRIVATE -mfpu=neon -mfloat-abi=softfp)
+endif()
+
 target_link_libraries(
         procamera
         android
