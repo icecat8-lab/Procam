@@ -175,10 +175,8 @@ class CameraController(private val context: Context, private val textureView: Te
 
             val rawSizes = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.getOutputSizes(ImageFormat.RAW_SENSOR)
             if (!rawSizes.isNullOrEmpty()) {
-                val rawWidth = rawSizes[0].width
-                val rawHeight = rawSizes[0].height
-                
-                rawImageReader = ImageReader.newInstance(rawWidth, rawHeight, ImageFormat.RAW_SENSOR, 1).apply {
+                val rawSize = rawSizes[0]
+                rawImageReader = ImageReader.newInstance(rawSize.width, rawSize.height, ImageFormat.RAW_SENSOR, 1).apply {
                     setOnImageAvailableListener({ reader ->
                         backgroundHandler?.post {
                             try {
@@ -188,15 +186,32 @@ class CameraController(private val context: Context, private val textureView: Te
                                 val bytes = ByteArray(buffer.remaining())
                                 buffer.get(bytes)
                                 
-                                val outWidth = image.width / 2
-                                val outHeight = image.height / 2
-                                val outBytes = ByteArray(outWidth * outHeight * 4)
-
-                                val bitmap = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
-                                val outBuffer = java.nio.ByteBuffer.wrap(outBytes)
-                                bitmap.copyPixelsFromBuffer(outBuffer)
+                                val rowStride = plane.rowStride
+                                val width = image.width
+                                val height = image.height
                                 
-                                saveBitmapToGallery(bitmap)
+                                val outputBytes = ByteArray(width * height * 4)
+                                
+                                try {
+                                    ImageProcessor().processRawPro(
+                                        rawData = bytes,
+                                        outputData = outputBytes,
+                                        width = width,
+                                        height = height,
+                                        rowStride = rowStride,
+                                        blackLevel = lastBlackLevel,
+                                        rGain = lastRGain,
+                                        gGain = lastGGain,
+                                        bGain = lastBGain,
+                                        ccm = lastCcm
+                                    )
+                                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                                    bitmap.copyPixelsFromBuffer(java.nio.ByteBuffer.wrap(outputBytes))
+                                    saveBitmapToGallery(bitmap)
+                                } catch (e: Exception) {
+                                    Log.e("Camera", "JNI Native Process Error", e)
+                                }
+                                
                                 image.close()
                             } catch (e: Exception) { Log.e("Camera", "RAW Save Error", e) }
                         }
@@ -229,7 +244,10 @@ class CameraController(private val context: Context, private val textureView: Te
         val imageSurface = imageReader?.surface ?: return
         val rawSurface = rawImageReader?.surface
 
-        val surfaces = if (rawSurface != null) listOf(surface, imageSurface, rawSurface) else listOf(surface, imageSurface)
+        val surfaces = mutableListOf(surface, imageSurface)
+        if (rawSurface != null) {
+            surfaces.add(rawSurface)
+        }
 
         try {
             previewRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
@@ -361,6 +379,7 @@ class CameraController(private val context: Context, private val textureView: Te
         try {
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             imageReader?.surface?.let { captureBuilder.addTarget(it) }
+            rawImageReader?.surface?.let { captureBuilder.addTarget(it) }
             
             val characteristics = cameraManager.getCameraCharacteristics(camera.id)
             val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
@@ -458,7 +477,7 @@ class CameraController(private val context: Context, private val textureView: Te
         val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
         uri?.let { finalUri ->
             context.contentResolver.openOutputStream(finalUri)?.use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
             }
             writeExifToUri(finalUri)
             
@@ -478,7 +497,6 @@ class CameraController(private val context: Context, private val textureView: Te
                 exif.setAttribute(ExifInterface.TAG_MAKE, Build.MANUFACTURER)
                 exif.setAttribute(ExifInterface.TAG_MODEL, Build.MODEL)
                 exif.setAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS, lastIsoCapture.toString())
-
                 
                 val expTimeSec = lastExpTimeCapture / 1_000_000_000.0
                 exif.setAttribute(ExifInterface.TAG_EXPOSURE_TIME, expTimeSec.toString())
@@ -502,4 +520,3 @@ class CameraController(private val context: Context, private val textureView: Te
         } catch (e: Exception) { Log.e("Camera", "EXIF Write Error", e) }
     }
 }
-
