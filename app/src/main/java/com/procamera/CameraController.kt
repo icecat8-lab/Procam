@@ -9,6 +9,7 @@ import android.graphics.Rect
 import android.hardware.camera2.*
 import android.hardware.camera2.params.MeteringRectangle
 import android.media.ImageReader
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -60,6 +61,13 @@ class CameraController(private val context: Context, private val textureView: Te
     private var lastGGain = 1.0f
     private var lastBGain = 1.0f
     private var lastCcm = floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f)
+    
+    // EXIF Metadata Trackers
+    private var lastJpegOrientation = 0
+    private var lastIsoCapture = 100
+    private var lastExpTimeCapture = 0L
+    private var lastAperture = 0f
+    private var lastFocalLength = 0f
     
     var supportedWbModes = intArrayOf(CaptureRequest.CONTROL_AWB_MODE_AUTO)
     val wbLabelsMap = mapOf(
@@ -141,7 +149,6 @@ class CameraController(private val context: Context, private val textureView: Te
                     val buffer = image.planes[0].buffer
                     val bytes = ByteArray(buffer.remaining())
                     buffer.get(bytes)
-                    // saveImageToGallery(bytes) 
                     image.close()
                 }
             }, backgroundHandler)
@@ -337,6 +344,8 @@ class CameraController(private val context: Context, private val textureView: Te
             }
             val jpegOrientation = (sensorOrientation - surfaceRotation + 360) % 360
             captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, jpegOrientation)
+            
+            lastJpegOrientation = jpegOrientation
 
             if (isAfAuto) {
                 captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
@@ -381,6 +390,11 @@ class CameraController(private val context: Context, private val textureView: Te
                     
                     lastBlackLevel = result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL)?.get(0) ?: 64f
                     
+                    lastIsoCapture = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: 100
+                    lastExpTimeCapture = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
+                    lastAperture = result.get(CaptureResult.LENS_APERTURE) ?: 0f
+                    lastFocalLength = result.get(CaptureResult.LENS_FOCAL_LENGTH) ?: 0f
+                    
                     startPreview()
                 }
             }, backgroundHandler)
@@ -405,27 +419,33 @@ class CameraController(private val context: Context, private val textureView: Te
                 context.contentResolver.openOutputStream(finalUri)?.use { out ->
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
                 }
-                mainUIHandler.post { onImageSaved?.invoke(finalUri) }
-            }
-        } catch (e: Exception) { }
-    }
+                
+                context.contentResolver.openFileDescriptor(finalUri, "rw")?.use { pfd ->
+                    val exif = ExifInterface(pfd.fileDescriptor)
+                    exif.setAttribute(ExifInterface.TAG_MAKE, Build.MANUFACTURER)
+                    exif.setAttribute(ExifInterface.TAG_MODEL, Build.MODEL)
+                    exif.setAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY, lastIsoCapture.toString())
+                    
+                    val expTimeSec = lastExpTimeCapture / 1_000_000_000.0
+                    exif.setAttribute(ExifInterface.TAG_EXPOSURE_TIME, expTimeSec.toString())
+                    
+                    exif.setAttribute(ExifInterface.TAG_F_NUMBER, lastAperture.toString())
+                    exif.setAttribute(ExifInterface.TAG_FOCAL_LENGTH, "${(lastFocalLength * 1000).toInt()}/1000")
+                    
+                    val datetime = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).format(Date())
+                    exif.setAttribute(ExifInterface.TAG_DATETIME, datetime)
+                    
+                    val orientationTag = when (lastJpegOrientation) {
+                        90 -> ExifInterface.ORIENTATION_ROTATE_90
+                        180 -> ExifInterface.ORIENTATION_ROTATE_180
+                        270 -> ExifInterface.ORIENTATION_ROTATE_270
+                        else -> ExifInterface.ORIENTATION_NORMAL
+                    }
+                    exif.setAttribute(ExifInterface.TAG_ORIENTATION, orientationTag.toString())
+                    
+                    exif.saveAttributes()
+                }
 
-    private fun saveImageToGallery(bytes: ByteArray) {
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val filename = "PRO_$timeStamp.jpg"
-
-        val contentValues = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ProCamera")
-            }
-        }
-
-        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-        try {
-            uri?.let { finalUri ->
-                context.contentResolver.openOutputStream(finalUri)?.use { it.write(bytes) }
                 mainUIHandler.post { onImageSaved?.invoke(finalUri) }
             }
         } catch (e: Exception) { }
