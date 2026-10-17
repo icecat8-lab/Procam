@@ -31,6 +31,7 @@ class CameraController(private val context: Context, private val textureView: Te
     private var captureSession: CameraCaptureSession? = null
     private var previewRequestBuilder: CaptureRequest.Builder? = null
     private var imageReader: ImageReader? = null
+    private var rawImageReader: ImageReader? = null
 
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
@@ -138,6 +139,26 @@ class CameraController(private val context: Context, private val textureView: Te
                 }
             }, backgroundHandler)
 
+            val rawSizes = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?.getOutputSizes(ImageFormat.RAW_SENSOR)
+
+            if (!rawSizes.isNullOrEmpty()) {
+                val rawWidth = rawSizes[0].width
+                val rawHeight = rawSizes[0].height
+                
+                rawImageReader = ImageReader.newInstance(rawWidth, rawHeight, ImageFormat.RAW_SENSOR, 1).apply {
+                    setOnImageAvailableListener({ reader ->
+                        val image = reader.acquireLatestImage()
+                        val buffer = image.planes[0].buffer
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        
+                        ImageProcessor().processRawImageNative(bytes, image.width, image.height)
+                        image.close()
+                    }, backgroundHandler)
+                }
+            }
+
             cameraManager.openCamera(cameraId, stateCallback, backgroundHandler)
         } catch (e: CameraAccessException) { }
     }
@@ -165,12 +186,15 @@ class CameraController(private val context: Context, private val textureView: Te
         
         val surface = Surface(texture)
         val imageSurface = imageReader?.surface ?: return
+        val rawSurface = rawImageReader?.surface
+
+        val surfaces = if (rawSurface != null) listOf(surface, imageSurface, rawSurface) else listOf(surface, imageSurface)
 
         try {
             previewRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
             previewRequestBuilder!!.addTarget(surface)
 
-            camera.createCaptureSession(listOf(surface, imageSurface), object : CameraCaptureSession.StateCallback() {
+            camera.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: CameraCaptureSession) {
                     captureSession = session
                     applySettings()
@@ -281,6 +305,7 @@ class CameraController(private val context: Context, private val textureView: Te
         try {
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             captureBuilder.addTarget(imageReader!!.surface)
+            rawImageReader?.surface?.let { captureBuilder.addTarget(it) }
             
             val characteristics = cameraManager.getCameraCharacteristics(camera.id)
             val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
@@ -354,5 +379,6 @@ class CameraController(private val context: Context, private val textureView: Te
         captureSession?.close(); captureSession = null
         cameraDevice?.close(); cameraDevice = null
         imageReader?.close(); imageReader = null
+        rawImageReader?.close(); rawImageReader = null
     }
 }
