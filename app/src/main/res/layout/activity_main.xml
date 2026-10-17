@@ -30,7 +30,7 @@
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:src="@drawable/ic_flash_off"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@android:drawable/list_selector_background"
             android:contentDescription="Flash" />
 
         <TextView
@@ -42,7 +42,7 @@
             android:textColor="@android:color/white"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@android:drawable/list_selector_background"
             android:padding="8dp" />
     </LinearLayout>
 
@@ -156,7 +156,8 @@
                 android:layout_centerVertical="true"
                 android:layout_alignParentStart="true"
                 android:scaleType="centerCrop"
-                android:background="#333333" />
+                android:background="#333333"
+                android:contentDescription="Thumbnail" />
 
             <View
                 android:id="@+id/btn_capture"
