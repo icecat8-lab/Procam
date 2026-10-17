@@ -319,11 +319,14 @@ class CameraController(
             // FIX: RAW stream is now attached only on devices that can run 3 concurrent
             // streams (FULL / LEVEL_3). On many LIMITED devices preview+JPEG+RAW failed
             // with onConfigureFailed → the camera was completely unusable.
-            val canUseRaw = !rawSizes.isNullOrEmpty() && (
+            val canUseRaw =
                 hwLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL ||
                 hwLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_3
-                )
-            if (canUseRaw) {
+            // FIX (CI compile error at line 328): isNullOrEmpty() must sit directly in the
+            // if-condition so Kotlin smart-casts rawSizes (nullable Array<Size>?) to
+            // non-null inside the block. Keeping the combined result in a separate val
+            // breaks the smart cast → "rawSizes[0]" did not compile.
+            if (canUseRaw && !rawSizes.isNullOrEmpty()) {
                 rawStreamActive = true
                 val rawSize = rawSizes[0]
                 rawImageReader = ImageReader.newInstance(
