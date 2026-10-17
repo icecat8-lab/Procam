@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         if (permissions[Manifest.permission.CAMERA] == true) {
+            cameraController.startBackgroundThread()
             startCameraIfReady()
         } else {
             Toast.makeText(this, "จำเป็นต้องใช้สิทธิ์กล้องถ่ายรูป", Toast.LENGTH_LONG).show()
@@ -305,6 +306,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        cameraController.closeCanvas()
         cameraController.closeCamera()
         cameraController.stopBackgroundThread()
         super.onPause()
