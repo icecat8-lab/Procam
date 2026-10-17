@@ -7,6 +7,5 @@ class ImageProcessor {
         }
     }
 
-    external fun stringFromJNI(): String
-    external fun processImageNative(imageData: ByteArray, width: Int, height: Int)
+    external fun processRawImageNative(rawData: ByteArray, width: Int, height: Int)
 }
