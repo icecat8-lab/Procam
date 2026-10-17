@@ -11,6 +11,7 @@ class ImageProcessor {
         rawData: ByteArray,
         width: Int,
         height: Int,
+        rowStride: Int,
         blackLevel: Float,
         rGain: Float,
         gGain: Float,
