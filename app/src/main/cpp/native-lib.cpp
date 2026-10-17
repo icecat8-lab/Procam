@@ -1,75 +1,70 @@
 #include <jni.h>
-#include <cstdint>
-#include <cmath>
+#include <android/bitmap.h>
 #include <algorithm>
+#include <cmath>
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_procamera_ImageProcessor_processRawPro(
-    JNIEnv* env, jobject,
-    jbyteArray raw_data, jint width, jint height, jint rowStride,
-    jfloat blackLevel, jfloat rGain, jfloat gGain, jfloat bGain,
-    jfloatArray ccm_array) {
+        JNIEnv *env,
+        jobject /* this */,
+        jbyteArray rawData,
+        jbyteArray outputData,
+        jint width,
+        jint height,
+        jint rowStride,
+        jfloat blackLevel,
+        jfloat rGain,
+        jfloat gGain,
+        jfloat bGain,
+        jfloatArray ccmArray) {
 
-    jbyte* pData = env->GetByteArrayElements(raw_data, nullptr);
-    jfloat* ccm = env->GetFloatArrayElements(ccm_array, nullptr);
-    
-    if (pData == nullptr || ccm == nullptr) {
-        if (pData) env->ReleaseByteArrayElements(raw_data, pData, JNI_ABORT);
-        if (ccm) env->ReleaseFloatArrayElements(ccm_array, ccm, JNI_ABORT);
-        return;
-    }
+    jbyte *rawBytes = env->GetByteArrayElements(rawData, nullptr);
+    jbyte *outputBytes = env->GetByteArrayElements(outputData, nullptr);
+    jfloat *ccm = env->GetFloatArrayElements(ccmArray, nullptr);
 
-    uint16_t* rawPixels = reinterpret_cast<uint16_t*>(pData);
-    const float whiteLevel = 1023.0f;
-    int stride16 = rowStride / 2;
+    uint16_t *raw16 = reinterpret_cast<uint16_t *>(rawBytes);
+    uint32_t *outPixels = reinterpret_cast<uint32_t *>(outputBytes);
 
-    #pragma omp parallel for
+    int stridePixels = rowStride / 2;
+
     for (int y = 0; y < height - 1; y += 2) {
         for (int x = 0; x < width - 1; x += 2) {
-            
-            int idxR  = y * stride16 + x;
-            int idxGr = y * stride16 + (x + 1);
-            int idxGb = (y + 1) * stride16 + x;
-            int idxB  = (y + 1) * stride16 + (x + 1);
+            int idx00 = y * stridePixels + x;
+            int idx01 = y * stridePixels + (x + 1);
+            int idx10 = (y + 1) * stridePixels + x;
+            int idx11 = (y + 1) * stridePixels + (x + 1);
 
-            float r_lin  = std::max(0.0f, static_cast<float>(rawPixels[idxR]) - blackLevel);
-            float gr_lin = std::max(0.0f, static_cast<float>(rawPixels[idxGr]) - blackLevel);
-            float gb_lin = std::max(0.0f, static_cast<float>(rawPixels[idxGb]) - blackLevel);
-            float b_lin  = std::max(0.0f, static_cast<float>(rawPixels[idxB]) - blackLevel);
+            float p00 = std::max(0.0f, (float)(raw16[idx00] - blackLevel));
+            float p01 = std::max(0.0f, (float)(raw16[idx01] - blackLevel));
+            float p10 = std::max(0.0f, (float)(raw16[idx10] - blackLevel));
+            float p11 = std::max(0.0f, (float)(raw16[idx11] - blackLevel));
 
-            r_lin  *= rGain;
-            gr_lin *= gGain;
-            gb_lin *= gGain;
-            b_lin  *= bGain;
+            float r = p11 * rGain;
+            float g = ((p01 + p10) / 2.0f) * gGain;
+            float b = p00 * bGain;
 
-            float r_norm = std::min(r_lin / whiteLevel, 1.0f);
-            float gr_norm = std::min(gr_lin / whiteLevel, 1.0f);
-            float gb_norm = std::min(gb_lin / whiteLevel, 1.0f);
-            float b_norm = std::min(b_lin / whiteLevel, 1.0f);
-            float g_avg = (gr_norm + gb_norm) / 2.0f;
+            r = std::min(255.0f, std::sqrt(r / 4.0f) * 16.0f);
+            g = std::min(255.0f, std::sqrt(g / 4.0f) * 16.0f);
+            b = std::min(255.0f, std::sqrt(b / 4.0f) * 16.0f);
 
-            float r_out = r_norm * ccm[0] + g_avg * ccm[1] + b_norm * ccm[2];
-            float gr_out = r_norm * ccm[3] + gr_norm * ccm[4] + b_norm * ccm[5];
-            float gb_out = r_norm * ccm[3] + gb_norm * ccm[4] + b_norm * ccm[5];
-            float b_out = r_norm * ccm[6] + g_avg * ccm[7] + b_norm * ccm[8];
+            uint8_t ir = static_cast<uint8_t>(r);
+            uint8_t ig = static_cast<uint8_t>(g);
+            uint8_t ib = static_cast<uint8_t>(b);
 
-            r_out = std::max(0.0f, std::min(1.0f, r_out));
-            gr_out = std::max(0.0f, std::min(1.0f, gr_out));
-            gb_out = std::max(0.0f, std::min(1.0f, gb_out));
-            b_out = std::max(0.0f, std::min(1.0f, b_out));
+            int outIdx00 = y * width + x;
+            int outIdx01 = y * width + (x + 1);
+            int outIdx10 = (y + 1) * width + x;
+            int outIdx11 = (y + 1) * width + (x + 1);
 
-            r_out = std::pow(r_out, 1.0f / 2.2f);
-            gr_out = std::pow(gr_out, 1.0f / 2.2f);
-            gb_out = std::pow(gb_out, 1.0f / 2.2f);
-            b_out = std::pow(b_out, 1.0f / 2.2f);
-
-            rawPixels[idxR]  = static_cast<uint16_t>(r_out * whiteLevel);
-            rawPixels[idxGr] = static_cast<uint16_t>(gr_out * whiteLevel);
-            rawPixels[idxGb] = static_cast<uint16_t>(gb_out * whiteLevel);
-            rawPixels[idxB]  = static_cast<uint16_t>(b_out * whiteLevel);
+            uint32_t color = (0xFF << 24) | (ir << 16) | (ig << 8) | ib;
+            outPixels[outIdx00] = color;
+            outPixels[outIdx01] = color;
+            outPixels[outIdx10] = color;
+            outPixels[outIdx11] = color;
         }
     }
 
-    env->ReleaseFloatArrayElements(ccm_array, ccm, JNI_ABORT);
-    env->ReleaseByteArrayElements(raw_data, pData, 0); 
+    env->ReleaseFloatArrayElements(ccmArray, ccm, JNI_ABORT);
+    env->ReleaseByteArrayElements(rawData, rawBytes, JNI_ABORT);
+    env->ReleaseByteArrayElements(outputData, outputBytes, 0);
 }
