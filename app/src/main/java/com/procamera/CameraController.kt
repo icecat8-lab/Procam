@@ -438,4 +438,67 @@ class CameraController(private val context: Context, private val textureView: Te
                 contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
                 context.contentResolver.update(finalUri, contentValues, null, null)
             }
-    
+            mainUIHandler.post { onImageSaved?.invoke(finalUri) }
+        }
+    }
+
+    private fun saveBitmapToGallery(bitmap: Bitmap) {
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val filename = "PRO_RAW_$timeStamp.jpg"
+
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ProCamera")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+
+        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        uri?.let { finalUri ->
+            context.contentResolver.openOutputStream(finalUri)?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+            }
+            writeExifToUri(finalUri)
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                context.contentResolver.update(finalUri, contentValues, null, null)
+            }
+            mainUIHandler.post { onImageSaved?.invoke(finalUri) }
+        }
+    }
+
+    private fun writeExifToUri(uri: Uri) {
+        try {
+            context.contentResolver.openFileDescriptor(uri, "rw")?.use { pfd ->
+                val exif = ExifInterface(pfd.fileDescriptor)
+                exif.setAttribute(ExifInterface.TAG_MAKE, Build.MANUFACTURER)
+                exif.setAttribute(ExifInterface.TAG_MODEL, Build.MODEL)
+                exif.setAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY, lastIsoCapture.toString())
+                
+                val expTimeSec = lastExpTimeCapture / 1_000_000_000.0
+                exif.setAttribute(ExifInterface.TAG_EXPOSURE_TIME, expTimeSec.toString())
+                
+                exif.setAttribute(ExifInterface.TAG_F_NUMBER, lastAperture.toString())
+                exif.setAttribute(ExifInterface.TAG_FOCAL_LENGTH, "${(lastFocalLength * 1000).toInt()}/1000")
+                
+                val datetime = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).format(Date())
+                exif.setAttribute(ExifInterface.TAG_DATETIME, datetime)
+                
+                val orientationTag = when (lastJpegOrientation) {
+                    90 -> ExifInterface.ORIENTATION_ROTATE_90
+                    180 -> ExifInterface.ORIENTATION_ROTATE_180
+                    270 -> ExifInterface.ORIENTATION_ROTATE_270
+                    else -> ExifInterface.ORIENTATION_NORMAL
+                }
+                exif.setAttribute(ExifInterface.TAG_ORIENTATION, orientationTag.toString())
+                
+                exif.saveAttributes()
+            }
+        } catch (e: Exception) { Log.e("Camera", "EXIF Write Error", e) }
+    }
+}
+
