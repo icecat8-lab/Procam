@@ -23,6 +23,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.exp
 import kotlin.math.ln
+import android.graphics.Bitmap
 
 class CameraController(private val context: Context, private val textureView: TextureView) {
 
@@ -140,7 +141,7 @@ class CameraController(private val context: Context, private val textureView: Te
                     val buffer = image.planes[0].buffer
                     val bytes = ByteArray(buffer.remaining())
                     buffer.get(bytes)
-                    saveImageToGallery(bytes)
+                    // saveImageToGallery(bytes) 
                     image.close()
                 }
             }, backgroundHandler)
@@ -155,11 +156,24 @@ class CameraController(private val context: Context, private val textureView: Te
                 rawImageReader = ImageReader.newInstance(rawWidth, rawHeight, ImageFormat.RAW_SENSOR, 1).apply {
                     setOnImageAvailableListener({ reader ->
                         val image = reader.acquireLatestImage()
-                        val buffer = image.planes[0].buffer
+                        val plane = image.planes[0]
+                        val buffer = plane.buffer
+                        val rowStride = plane.rowStride
                         val bytes = ByteArray(buffer.remaining())
                         buffer.get(bytes)
                         
-                        ImageProcessor().processRawPro(bytes, image.width, image.height, lastBlackLevel, lastRGain, lastGGain, lastBGain, lastCcm)
+                        val outWidth = image.width / 2
+                        val outHeight = image.height / 2
+                        val outBytes = ByteArray(outWidth * outHeight * 4)
+
+                        ImageProcessor().processRawPro(bytes, outBytes, image.width, image.height, rowStride, lastBlackLevel, lastRGain, lastGGain, lastBGain, lastCcm)
+                        
+                        val bitmap = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
+                        val outBuffer = java.nio.ByteBuffer.wrap(outBytes)
+                        bitmap.copyPixelsFromBuffer(outBuffer)
+                        
+                        saveBitmapToGallery(bitmap)
+
                         image.close()
                     }, backgroundHandler)
                 }
@@ -371,6 +385,29 @@ class CameraController(private val context: Context, private val textureView: Te
                 }
             }, backgroundHandler)
         } catch (e: CameraAccessException) { }
+    }
+
+    private fun saveBitmapToGallery(bitmap: Bitmap) {
+        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val filename = "PRO_RAW_$timeStamp.jpg"
+
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ProCamera")
+            }
+        }
+
+        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        try {
+            uri?.let { finalUri ->
+                context.contentResolver.openOutputStream(finalUri)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+                }
+                mainUIHandler.post { onImageSaved?.invoke(finalUri) }
+            }
+        } catch (e: Exception) { }
     }
 
     private fun saveImageToGallery(bytes: ByteArray) {
