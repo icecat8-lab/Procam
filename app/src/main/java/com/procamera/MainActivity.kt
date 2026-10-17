@@ -1,18 +1,15 @@
 package com.procamera
 
 import android.Manifest
-import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.SurfaceTexture
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.GestureDetector
-import android.view.MotionEvent
 import android.view.TextureView
 import android.view.View
 import android.widget.ImageView
@@ -20,18 +17,22 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
 import java.util.Locale
 
-class MainActivity : Activity() {
+class MainActivity : ComponentActivity() {
 
+    
     private lateinit var viewFinder: TextureView
     private lateinit var btnCapture: View
     private lateinit var btnRatio: TextView
     private lateinit var btnFlash: ImageView
     private lateinit var thumbnailView: ImageView
     private lateinit var focusRing: View
-    private lateinit var cameraController: CameraController
-
+    
     private lateinit var sliderPanel: LinearLayout
     private lateinit var settingSeekbar: SeekBar
     private lateinit var btnAutoToggle: TextView
@@ -42,26 +43,46 @@ class MainActivity : Activity() {
     private lateinit var btnS: TextView
     private lateinit var btnEv: TextView
 
-    private var activeMode = "NONE"
     
-    private var afProgress = 0
-    private var isoProgress = 0
-    private var wbProgress = 0
-    private var sProgress = 0
-    private var evProgress = 50
+    private lateinit var cameraController: CameraController
+    private lateinit var viewModel: CameraViewModel
 
-    private var latestImageUri: Uri? = null
-    private var lastSettingTime = 0L
-    private val applySettingsRunnable = Runnable { cameraController.applySettings() }
+    
     private val mainHandler = Handler(Looper.getMainLooper())
-    
-    private var isFrameLocked = false
+    private val applySettingsRunnable = Runnable { cameraController.applySettings() }
+    private var lastSettingTime = 0L
 
-    @SuppressLint("ClickableViewAccessibility")
+    
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[Manifest.permission.CAMERA] == true) {
+            startCameraIfReady()
+        } else {
+            Toast.makeText(this, "จำเป็นต้องใช้สิทธิ์กล้องถ่ายรูป", Toast.LENGTH_LONG).show()
+            finish()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        
+        viewModel = ViewModelProvider(this)[CameraViewModel::class.java]
+
+        initViews()
+        setupCameraController()
+        setupListeners()
+        
+        
+        val touchHandler = TouchFocusHandler(this, viewFinder, focusRing, cameraController)
+        viewFinder.setOnTouchListener(touchHandler)
+
+        restoreSliderUI()
+    }
+
+    private fun initViews() {
         viewFinder = findViewById(R.id.view_finder)
         btnCapture = findViewById(R.id.btn_capture)
         btnRatio = findViewById(R.id.btn_ratio)
@@ -78,67 +99,25 @@ class MainActivity : Activity() {
         btnWb = findViewById(R.id.btn_wb)
         btnS = findViewById(R.id.btn_s)
         btnEv = findViewById(R.id.btn_ev)
+    }
 
+    private fun setupCameraController() {
         cameraController = CameraController(this, viewFinder)
-        
         cameraController.onCameraStateUpdated = { focusDist, iso, speedNanos ->
-            if (cameraController.isAfAuto) {
-                btnAf.text = String.format(Locale.US, "AF\n%.1f", focusDist)
-            }
-            if (cameraController.isIsoAuto) {
-                btnIso.text = "ISO\n$iso"
-            }
-            if (cameraController.isSpeedAuto) {
-                btnS.text = "S\n${formatShutterText(speedNanos)}"
+            mainHandler.post {
+                if (cameraController.isAfAuto) btnAf.text = String.format(Locale.US, "AF\n%.1f", focusDist)
+                if (cameraController.isIsoAuto) btnIso.text = "ISO\n$iso"
+                if (cameraController.isSpeedAuto) btnS.text = "S\n${formatShutterText(speedNanos)}"
             }
         }
 
-        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onLongPress(e: MotionEvent) {
-                isFrameLocked = true
-                focusRing.visibility = View.VISIBLE
-                focusRing.setBackgroundResource(R.drawable.focus_frame_locked)
-                focusRing.x = (e.x + viewFinder.x) - (focusRing.width / 2)
-                focusRing.y = (e.y + viewFinder.y) - (focusRing.height / 2)
-                
-                cameraController.isAELocked = true
-                cameraController.applySettings()
-            }
-        })
-
-        viewFinder.setOnTouchListener { _, event ->
-            gestureDetector.onTouchEvent(event)
-            
-            val touchX = event.x + viewFinder.x
-            val touchY = event.y + viewFinder.y
-            
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    if (isFrameLocked) {
-                        isFrameLocked = false
-                        cameraController.isAELocked = false
-                        cameraController.applySettings()
-                    }
-                    focusRing.visibility = View.VISIBLE
-                    focusRing.setBackgroundResource(R.drawable.focus_frame)
-                    focusRing.x = touchX - (focusRing.width / 2)
-                    focusRing.y = touchY - (focusRing.height / 2)
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    if (!isFrameLocked) {
-                        focusRing.x = touchX - (focusRing.width / 2)
-                        focusRing.y = touchY - (focusRing.height / 2)
-                    }
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (!isFrameLocked) {
-                        cameraController.triggerFocusAtPoint(event.x, event.y, viewFinder.width, viewFinder.height)
-                    }
-                }
-            }
-            true
+        cameraController.onImageSaved = { uri ->
+            viewModel.latestImageUri = uri
+            mainHandler.post { thumbnailView.setImageURI(uri) }
         }
+    }
 
+    private fun setupListeners() {
         btnRatio.setOnClickListener {
             val newIs16by9 = !cameraController.is16by9
             btnRatio.text = if (newIs16by9) "16:9" else "4:3"
@@ -148,39 +127,17 @@ class MainActivity : Activity() {
         
         btnFlash.setOnClickListener {
             cameraController.isFlashOn = !cameraController.isFlashOn
-            if (cameraController.isFlashOn) {
-                btnFlash.setImageResource(R.drawable.ic_flash_on)
-            } else {
-                btnFlash.setImageResource(R.drawable.ic_flash_off)
-            }
+            btnFlash.setImageResource(if (cameraController.isFlashOn) R.drawable.ic_flash_on else R.drawable.ic_flash_off)
         }
 
         btnAutoToggle.setOnClickListener {
-            val targetProgress = if (activeMode == "EV") 50 else 0
+            val targetProgress = if (viewModel.activeMode == "EV") 50 else 0
             settingSeekbar.progress = targetProgress
-            updateSliderUI(targetProgress, true)
-            cameraController.applySettings()
-        }
-
-        cameraController.onImageSaved = { uri ->
-            latestImageUri = uri
-            mainHandler.post {
-                thumbnailView.setImageURI(uri)
-            }
+            updateSliderUI(targetProgress, fromUser = true)
         }
 
         thumbnailView.setOnClickListener {
-            latestImageUri?.let { uri ->
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "image/jpeg")
-                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-                }
-                try {
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(this, "ไม่พบแอปพลิเคชันสำหรับเปิดรูปภาพ", Toast.LENGTH_SHORT).show()
-                }
-            }
+            viewModel.latestImageUri?.let { uri -> openGallery(uri) }
         }
 
         btnCapture.setOnClickListener {
@@ -188,36 +145,33 @@ class MainActivity : Activity() {
             cameraController.takePicture(rotation)
             
             viewFinder.alpha = 0.5f
-            mainHandler.postDelayed({ viewFinder.alpha = 1.0f }, 150)
+            mainHandler.postDelayed({ viewFinder.alpha = 1.0f }, 100)
         }
 
-        btnAf.setOnClickListener { toggleSlider("AF", afProgress) }
-        btnIso.setOnClickListener { toggleSlider("ISO", isoProgress) }
-        btnWb.setOnClickListener { toggleSlider("WB", wbProgress) }
-        btnS.setOnClickListener { toggleSlider("S", sProgress) }
-        btnEv.setOnClickListener { toggleSlider("EV", evProgress) }
+        btnAf.setOnClickListener { toggleSlider("AF", viewModel.afProgress) }
+        btnIso.setOnClickListener { toggleSlider("ISO", viewModel.isoProgress) }
+        btnWb.setOnClickListener { toggleSlider("WB", viewModel.wbProgress) }
+        btnS.setOnClickListener { toggleSlider("S", viewModel.sProgress) }
+        btnEv.setOnClickListener { toggleSlider("EV", viewModel.evProgress) }
 
         settingSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (!fromUser) return
-                updateSliderUI(progress, true)
+                if (fromUser) updateSliderUI(progress, fromUser = true)
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 cameraController.applySettings()
             }
         })
-        
-        resetButtonColors()
     }
 
     private fun updateSliderUI(progress: Int, fromUser: Boolean) {
-        val isAuto = if (activeMode == "EV") progress == 50 else progress == 0
-        updateAutoButtonState(isAuto)
+        val isAuto = if (viewModel.activeMode == "EV") progress == 50 else progress == 0
+        btnAutoToggle.setTextColor(if (isAuto) Color.GREEN else Color.WHITE)
 
-        when (activeMode) {
+        when (viewModel.activeMode) {
             "AF" -> {
-                afProgress = progress
+                viewModel.afProgress = progress
                 cameraController.isAfAuto = isAuto
                 if (!isAuto) {
                     val focus = cameraController.calculateFocus(progress)
@@ -226,7 +180,7 @@ class MainActivity : Activity() {
                 }
             }
             "ISO" -> {
-                isoProgress = progress
+                viewModel.isoProgress = progress
                 cameraController.isIsoAuto = isAuto
                 if (!isAuto) {
                     val iso = cameraController.calculateIso(progress)
@@ -235,13 +189,13 @@ class MainActivity : Activity() {
                 }
             }
             "WB" -> {
-                wbProgress = progress
+                viewModel.wbProgress = progress
                 val mode = cameraController.getWbMode(progress)
                 cameraController.currentWb = mode
                 btnWb.text = "WB\n${cameraController.getWbLabel(mode)}"
             }
             "S" -> {
-                sProgress = progress
+                viewModel.sProgress = progress
                 cameraController.isSpeedAuto = isAuto
                 if (!isAuto) {
                     val speedNanos = cameraController.calculateSpeed(progress)
@@ -250,14 +204,8 @@ class MainActivity : Activity() {
                 }
             }
             "EV" -> {
-                evProgress = progress
-                val ev = if (progress == 50) {
-                    0
-                } else if (progress < 50) {
-                    -3 + ((progress / 50f) * 3).toInt()
-                } else {
-                    ((progress - 50) / 50f * 3).toInt()
-                }
+                viewModel.evProgress = progress
+                val ev = if (progress == 50) 0 else if (progress < 50) -3 + ((progress / 50f) * 3).toInt() else ((progress - 50) / 50f * 3).toInt()
                 cameraController.currentEv = ev
                 val sign = if (ev > 0) "+" else ""
                 btnEv.text = if (ev == 0) "EV\n0" else "EV\n$sign$ev"
@@ -266,7 +214,7 @@ class MainActivity : Activity() {
 
         if (fromUser) {
             val currentTime = System.currentTimeMillis()
-            if (currentTime - lastSettingTime > 32) {
+            if (currentTime - lastSettingTime > 32) { // 30fps rate limiting
                 cameraController.applySettings()
                 lastSettingTime = currentTime
             } else {
@@ -276,21 +224,53 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun updateAutoButtonState(isAuto: Boolean) {
-        if (isAuto) {
-            btnAutoToggle.setTextColor(Color.parseColor("#00FF00"))
-        } else {
-            btnAutoToggle.setTextColor(Color.WHITE)
+    private fun toggleSlider(mode: String, currentProgress: Int) {
+        if (viewModel.activeMode == mode) {
+            sliderPanel.visibility = View.GONE
+            viewModel.activeMode = "NONE"
+            resetButtonColors()
+            return
+        }
+        
+        viewModel.activeMode = mode
+        sliderPanel.visibility = View.VISIBLE
+        
+        resetButtonColors()
+        when (mode) {
+            "AF" -> btnAf.setTextColor(Color.GREEN)
+            "ISO" -> btnIso.setTextColor(Color.GREEN)
+            "WB" -> btnWb.setTextColor(Color.GREEN)
+            "S" -> btnS.setTextColor(Color.GREEN)
+            "EV" -> btnEv.setTextColor(Color.GREEN)
+        }
+        
+        updateSliderUI(currentProgress, false)
+        settingSeekbar.progress = currentProgress
+    }
+
+    private fun restoreSliderUI() {
+        if (viewModel.activeMode != "NONE") {
+            val mode = viewModel.activeMode
+            viewModel.activeMode = "NONE" // เคลียร์ค่าชั่วคราวเพื่อให้ toggleSlider ทำงาน
+            val progress = when (mode) {
+                "AF" -> viewModel.afProgress
+                "ISO" -> viewModel.isoProgress
+                "WB" -> viewModel.wbProgress
+                "S" -> viewModel.sProgress
+                "EV" -> viewModel.evProgress
+                else -> 0
+            }
+            viewFinder.post { toggleSlider(mode, progress) }
         }
     }
 
-    private fun formatShutterText(nanos: Long): String {
-        val sec = nanos / 1_000_000_000.0
-        return if (sec >= 0.5) {
-            String.format(Locale.US, "%.1fs", sec)
-        } else {
-            "1/${(1.0 / sec).toInt()}"
-        }
+    private fun resetButtonColors() {
+        val defaultColor = Color.WHITE
+        btnAf.setTextColor(defaultColor)
+        btnIso.setTextColor(defaultColor)
+        btnWb.setTextColor(defaultColor)
+        btnS.setTextColor(defaultColor)
+        btnEv.setTextColor(defaultColor)
     }
 
     private fun adjustPreviewAspectRatio(is16by9: Boolean) {
@@ -303,44 +283,28 @@ class MainActivity : Activity() {
             viewFinder.layoutParams = layoutParams
         }
     }
-    
-    private fun toggleSlider(mode: String, currentProgress: Int) {
-        if (activeMode == mode) {
-            sliderPanel.visibility = View.GONE
-            activeMode = "NONE"
-            resetButtonColors()
-            return
-        }
-        
-        activeMode = mode
-        sliderPanel.visibility = View.VISIBLE
-        
-        resetButtonColors()
-        when (mode) {
-            "AF" -> btnAf.setTextColor(Color.parseColor("#00FF00"))
-            "ISO" -> btnIso.setTextColor(Color.parseColor("#00FF00"))
-            "WB" -> btnWb.setTextColor(Color.parseColor("#00FF00"))
-            "S" -> btnS.setTextColor(Color.parseColor("#00FF00"))
-            "EV" -> btnEv.setTextColor(Color.parseColor("#00FF00"))
-        }
-        
-        updateSliderUI(currentProgress, false)
-        settingSeekbar.progress = currentProgress
+
+    private fun formatShutterText(nanos: Long): String {
+        val sec = nanos / 1_000_000_000.0
+        return if (sec >= 0.5) String.format(Locale.US, "%.1fs", sec) else "1/${(1.0 / sec).toInt()}"
     }
 
-    private fun resetButtonColors() {
-        btnAf.setTextColor(Color.WHITE)
-        btnIso.setTextColor(Color.WHITE)
-        btnWb.setTextColor(Color.WHITE)
-        btnS.setTextColor(Color.WHITE)
-        btnEv.setTextColor(Color.WHITE)
+    private fun openGallery(uri: Uri) {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "image/*")
+            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+        try { startActivity(intent) } catch (e: Exception) {
+            Toast.makeText(this, "ไม่พบแอปสำหรับดูรูปภาพ", Toast.LENGTH_SHORT).show()
+        }
     }
+
+    // --- Lifecycle & Permissions ---
 
     override fun onResume() {
         super.onResume()
         cameraController.startBackgroundThread()
         if (viewFinder.isAvailable) {
-            adjustPreviewAspectRatio(cameraController.is16by9)
             checkPermissionsAndStart()
         } else {
             viewFinder.surfaceTextureListener = surfaceTextureListener
@@ -348,62 +312,62 @@ class MainActivity : Activity() {
         checkThumbnailExists()
     }
 
-    private fun checkThumbnailExists() {
-        latestImageUri?.let { uri ->
-            try {
-                val cursor = contentResolver.query(uri, null, null, null, null)
-                if (cursor != null && cursor.moveToFirst()) {
-                    cursor.close()
-                } else {
-                    cursor?.close()
-                    latestImageUri = null
-                    thumbnailView.setImageDrawable(null)
-                }
-            } catch (e: Exception) {
-                latestImageUri = null
-                thumbnailView.setImageDrawable(null)
-            }
-        }
-    }
-
     override fun onPause() {
         cameraController.closeCamera()
         cameraController.stopBackgroundThread()
-        sliderPanel.visibility = View.GONE
-        activeMode = "NONE"
-        resetButtonColors()
         super.onPause()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        mainHandler.removeCallbacksAndMessages(null)
+    }
+
     private fun checkPermissionsAndStart() {
-        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            
-            requestPermissions(
-                arrayOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE), 
-                100
-            )
+        val permissions = mutableListOf(Manifest.permission.CAMERA)
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+
+        if (permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) {
+            startCameraIfReady()
         } else {
-            cameraController.openCamera()
+            requestPermissionLauncher.launch(permissions.toTypedArray())
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        if (requestCode == 100 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            if (viewFinder.isAvailable) {
-                cameraController.openCamera()
-            } else {
-                viewFinder.surfaceTextureListener = surfaceTextureListener
-            }
+    private fun startCameraIfReady() {
+        if (viewFinder.isAvailable) {
+            adjustPreviewAspectRatio(cameraController.is16by9)
+            cameraController.openCamera()
         }
     }
 
     private val surfaceTextureListener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
-            adjustPreviewAspectRatio(cameraController.is16by9)
             checkPermissionsAndStart()
         }
         override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
         override fun onSurfaceTextureDestroyed(surface: SurfaceTexture) = true
         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+    }
+
+    private fun checkThumbnailExists() {
+        viewModel.latestImageUri?.let { uri ->
+            try {
+                val cursor = contentResolver.query(uri, null, null, null, null)
+                if (cursor != null && cursor.moveToFirst()) {
+                    cursor.close()
+                    thumbnailView.setImageURI(uri)
+                } else {
+                    cursor?.close()
+                    viewModel.latestImageUri = null
+                    thumbnailView.setImageDrawable(null)
+                }
+            } catch (e: Exception) {
+                viewModel.latestImageUri = null
+                thumbnailView.setImageDrawable(null)
+            }
+        }
     }
 }
