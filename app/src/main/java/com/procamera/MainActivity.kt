@@ -296,6 +296,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         cameraController.startBackgroundThread()
         if (viewFinder.isAvailable) {
+            adjustPreviewAspectRatio(cameraController.is16by9)
             checkPermissionsAndStart()
         } else {
             viewFinder.surfaceTextureListener = surfaceTextureListener
@@ -336,6 +337,7 @@ class MainActivity : ComponentActivity() {
 
     private val surfaceTextureListener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+            adjustPreviewAspectRatio(cameraController.is16by9)
             checkPermissionsAndStart()
         }
         override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
