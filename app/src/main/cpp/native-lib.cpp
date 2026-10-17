@@ -17,7 +17,9 @@ Java_com_procamera_ImageProcessor_processRawPro(
         jfloat rGain,
         jfloat gGain,
         jfloat bGain,
-        jfloatArray ccmArray) {
+        jfloatArray ccmArray,
+        jint cfaPattern,
+        jint whiteLevel) {
 
     // Get buffers; use JNI_ABORT for read-only inputs so the JVM doesn't copy back
     jbyte *rawBytes = env->GetByteArrayElements(rawData, nullptr);
@@ -64,11 +66,27 @@ Java_com_procamera_ImageProcessor_processRawPro(
     float gg = (gGain > 0.001f) ? gGain : 1.0f;
     float bg = (bGain > 0.001f) ? bGain : 1.0f;
 
-    // Bayer pattern assumption: RGGB
-    // Even row:    R G R G ...
-    // Odd row:     G B G B ...
-    auto isRedAt = [](int x, int y) { return (x % 2 == 0) && (y % 2 == 0); };
-    auto isBlueAt = [](int x, int y) { return (x % 2 == 1) && (y % 2 == 1); };
+    // FIX: Bayer pattern was hardcoded RGGB — sensors with GRBG/GBRG/BGGR produced
+    // green/magenta-tinted images. Now supports all 4 arrangements from
+    // CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT.
+    // Returns 0 = R, 1 = G, 2 = B for the given Bayer site.
+    auto colorAt = [&](int x, int y) -> int {
+        int px = ((x % 2) + 2) % 2;
+        int py = ((y % 2) + 2) % 2;
+        switch (cfaPattern) {
+            case 1: // GRBG: row0 G R G R / row1 B G B G
+                return (py == 0) ? (px == 1 ? 0 : 1) : (px == 0 ? 2 : 1);
+            case 2: // GBRG: row0 G B G B / row1 R G R G
+                return (py == 0) ? (px == 1 ? 2 : 1) : (px == 0 ? 0 : 1);
+            case 3: // BGGR: (0,0)=B (1,1)=R
+                return (px == 0 && py == 0) ? 2 : (px == 1 && py == 1 ? 0 : 1);
+            default: // 0 = RGGB: row0 R G R G / row1 G B G B
+                return (px == 0 && py == 0) ? 0 : (px == 1 && py == 1 ? 2 : 1);
+        }
+    };
+
+    auto isRedAt = [&](int x, int y) { return colorAt(x, y) == 0; };
+    auto isBlueAt = [&](int x, int y) { return colorAt(x, y) == 2; };
     // green elsewhere
 
     // Output: ARGB_8888. Android's copyPixelsFromBuffer expects bytes in [R, G, B, A] order.
@@ -95,14 +113,14 @@ Java_com_procamera_ImageProcessor_processRawPro(
                 r = (getRaw(x - 1, y - 1) + getRaw(x + 1, y - 1) +
                      getRaw(x - 1, y + 1) + getRaw(x + 1, y + 1)) * 0.25f * rg;
             } else {
-                // Green site — could be on R row or B row
+                // Green site — detect which channel sits on the horizontal neighbours
                 g = getRaw(x, y) * gg;
-                if (y % 2 == 0) {
-                    // Green on R-row: horizontal neighbours are R, vertical are B
+                if (colorAt(x + 1, y) == 0) {
+                    // Horizontal neighbours are R, vertical are B
                     r = (getRaw(x - 1, y) + getRaw(x + 1, y)) * 0.5f * rg;
                     b = (getRaw(x, y - 1) + getRaw(x, y + 1)) * 0.5f * bg;
                 } else {
-                    // Green on B-row: horizontal neighbours are B, vertical are R
+                    // Horizontal neighbours are B, vertical are R
                     b = (getRaw(x - 1, y) + getRaw(x + 1, y)) * 0.5f * bg;
                     r = (getRaw(x, y - 1) + getRaw(x, y + 1)) * 0.5f * rg;
                 }
@@ -123,9 +141,10 @@ Java_com_procamera_ImageProcessor_processRawPro(
                 return 1.055f * std::pow(v, 1.0f / 2.4f) - 0.055f;
             };
 
-            // Normalize RAW 16-bit values into [0,1] range
-            // Typical 16-bit RAW max ≈ 1023 (10-bit) or 4095 (12-bit). Use 4095 as default.
-            float scale = 1.0f / 4095.0f;
+            // FIX: white level was hardcoded 4095 — 10-bit sensors produced dark images.
+            // Now uses the real value from SENSOR_INFO_WHITE_LEVEL passed from Kotlin.
+            float scale = (whiteLevel > 0) ? 1.0f / static_cast<float>(whiteLevel)
+                                           : (1.0f / 4095.0f);
             float lr = nr * scale;
             float lg = ng * scale;
             float lb = nb * scale;
