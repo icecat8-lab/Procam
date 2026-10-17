@@ -4,9 +4,7 @@ import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
-import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
@@ -53,7 +51,6 @@ class CameraController(private val context: Context, private val textureView: Te
     var isAELocked = false
     var isFlashOn = false
 
-    
     var minIso = 50; var maxIso = 3200
     var minExp = 1000000L; var maxExp = 1000000000L
     var maxFocus = 10f
@@ -62,13 +59,11 @@ class CameraController(private val context: Context, private val textureView: Te
     var isManualSupported = false
     private var sensorArraySize: Rect? = null
     
-    
     private var lastBlackLevel = 64f
     private var lastRGain = 1.0f
     private var lastGGain = 1.0f
     private var lastBGain = 1.0f
     private var lastCcm = floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f)
-    
     
     private var lastJpegOrientation = 0
     private var lastIsoCapture = 100
@@ -146,12 +141,10 @@ class CameraController(private val context: Context, private val textureView: Te
             val capabilities = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
             isManualSupported = capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true
             
-            
             sensorArraySize = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
             chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { minIso = it.lower; maxIso = it.upper }
             chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { minExp = it.lower; maxExp = it.upper }
             chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { maxFocus = it }
-            
             
             chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { minEv = it.lower; maxEv = it.upper }
             chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)?.let { evStep = it.toFloat() }
@@ -165,7 +158,6 @@ class CameraController(private val context: Context, private val textureView: Te
             val imgWidth = if (is16by9) 1920 else 1440
             val imgHeight = 1080
 
-            
             imageReader = ImageReader.newInstance(imgWidth, imgHeight, ImageFormat.JPEG, 1)
             imageReader?.setOnImageAvailableListener({ reader ->
                 backgroundHandler?.post {
@@ -181,7 +173,6 @@ class CameraController(private val context: Context, private val textureView: Te
                 }
             }, backgroundHandler)
 
-            
             val rawSizes = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.getOutputSizes(ImageFormat.RAW_SENSOR)
             if (!rawSizes.isNullOrEmpty()) {
                 val rawWidth = rawSizes[0].width
@@ -194,7 +185,6 @@ class CameraController(private val context: Context, private val textureView: Te
                                 val image = reader.acquireLatestImage()
                                 val plane = image.planes[0]
                                 val buffer = plane.buffer
-                                val rowStride = plane.rowStride
                                 val bytes = ByteArray(buffer.remaining())
                                 buffer.get(bytes)
                                 
@@ -202,9 +192,6 @@ class CameraController(private val context: Context, private val textureView: Te
                                 val outHeight = image.height / 2
                                 val outBytes = ByteArray(outWidth * outHeight * 4)
 
-                                
-                                
-                                
                                 val bitmap = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
                                 val outBuffer = java.nio.ByteBuffer.wrap(outBytes)
                                 bitmap.copyPixelsFromBuffer(outBuffer)
@@ -294,7 +281,6 @@ class CameraController(private val context: Context, private val textureView: Te
         } catch (e: Exception) { }
     }
 
-    
     fun calculateIso(progress: Int): Int {
         if (progress == 0) return minIso
         return minIso + ((maxIso - minIso) * ((progress - 1) / 99f)).toInt()
@@ -318,9 +304,9 @@ class CameraController(private val context: Context, private val textureView: Te
         val index = 1 + ((progress - 1) * (maxIdx - 1) / 99)
         return supportedWbModes[index]
     }
+
     fun getWbLabel(mode: Int): String = wbLabelsMap[mode] ?: "WB"
 
-    
     fun calculateEv(progress: Int): Int {
         if (progress == 50) return 0
         return if (progress < 50) {
@@ -329,6 +315,7 @@ class CameraController(private val context: Context, private val textureView: Te
             (maxEv * ((progress - 50) / 50f)).toInt()
         }
     }
+
     fun getEvLabel(progress: Int): String {
         val evInt = calculateEv(progress)
         if (evInt == 0) return "0.0"
@@ -426,12 +413,29 @@ class CameraController(private val context: Context, private val textureView: Te
         } catch (e: CameraAccessException) { }
     }
 
-    
-    
-    
     private fun saveJpegToGallery(bytes: ByteArray) {
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val filename = "PRO_JPG_$timeStamp.jpg"
 
         val contentValues = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, filenam
+            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ProCamera")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+
+        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        uri?.let { finalUri ->
+            context.contentResolver.openOutputStream(finalUri)?.use { out ->
+                out.write(bytes)
+            }
+            writeExifToUri(finalUri)
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                context.contentResolver.update(finalUri, contentValues, null, null)
+            }
+    
