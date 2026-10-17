@@ -2,7 +2,6 @@ package com.procamera
 
 import android.view.View
 import android.view.TextureView
-import android.graphics.Rect
 import android.view.MotionEvent
 
 class TouchFocusHandler(
@@ -38,14 +37,14 @@ class TouchFocusHandler(
     override fun onTouch(v: View, event: MotionEvent): Boolean {
         gestureDetector.onTouchEvent(event)
         
-        val ringW = focusRing.width.toFloat()
-        val ringH = focusRing.height.toFloat()
+        val ringW = if (focusRing.width > 0) focusRing.width.toFloat() else 228f
+        val ringH = if (focusRing.height > 0) focusRing.height.toFloat() else 228f
         
         val clampedX = event.x.coerceIn(0f, viewFinder.width.toFloat())
         val clampedY = event.y.coerceIn(0f, viewFinder.height.toFloat())
         
-        val ringX = (clampedX - ringW / 2f).coerceIn(0f, viewFinder.width - ringW)
-        val ringY = (clampedY - ringH / 2f).coerceIn(0f, viewFinder.height - ringH)
+        val ringX = (clampedX - ringW / 2f).coerceIn(0f, maxOf(0f, viewFinder.width - ringW))
+        val ringY = (clampedY - ringH / 2f).coerceIn(0f, maxOf(0f, viewFinder.height - ringH))
 
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
