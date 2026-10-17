@@ -25,7 +25,6 @@ import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
-    
     private lateinit var viewFinder: TextureView
     private lateinit var btnCapture: View
     private lateinit var btnRatio: TextView
@@ -43,16 +42,13 @@ class MainActivity : ComponentActivity() {
     private lateinit var btnS: TextView
     private lateinit var btnEv: TextView
 
-    
     private lateinit var cameraController: CameraController
     private lateinit var viewModel: CameraViewModel
 
-    
     private val mainHandler = Handler(Looper.getMainLooper())
     private val applySettingsRunnable = Runnable { cameraController.applySettings() }
     private var lastSettingTime = 0L
 
-    
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -68,13 +64,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        
         viewModel = ViewModelProvider(this)[CameraViewModel::class.java]
 
         initViews()
         setupCameraController()
         setupListeners()
-        
         
         val touchHandler = TouchFocusHandler(this, viewFinder, focusRing, cameraController)
         viewFinder.setOnTouchListener(touchHandler)
@@ -205,16 +199,15 @@ class MainActivity : ComponentActivity() {
             }
             "EV" -> {
                 viewModel.evProgress = progress
-                val ev = if (progress == 50) 0 else if (progress < 50) -3 + ((progress / 50f) * 3).toInt() else ((progress - 50) / 50f * 3).toInt()
+                val ev = cameraController.calculateEv(progress)
                 cameraController.currentEv = ev
-                val sign = if (ev > 0) "+" else ""
-                btnEv.text = if (ev == 0) "EV\n0" else "EV\n$sign$ev"
+                btnEv.text = "EV\n${cameraController.getEvLabel(progress)}"
             }
         }
 
         if (fromUser) {
             val currentTime = System.currentTimeMillis()
-            if (currentTime - lastSettingTime > 32) { // 30fps rate limiting
+            if (currentTime - lastSettingTime > 32) {
                 cameraController.applySettings()
                 lastSettingTime = currentTime
             } else {
@@ -251,7 +244,7 @@ class MainActivity : ComponentActivity() {
     private fun restoreSliderUI() {
         if (viewModel.activeMode != "NONE") {
             val mode = viewModel.activeMode
-            viewModel.activeMode = "NONE" // เคลียร์ค่าชั่วคราวเพื่อให้ toggleSlider ทำงาน
+            viewModel.activeMode = "NONE"
             val progress = when (mode) {
                 "AF" -> viewModel.afProgress
                 "ISO" -> viewModel.isoProgress
@@ -298,8 +291,6 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "ไม่พบแอปสำหรับดูรูปภาพ", Toast.LENGTH_SHORT).show()
         }
     }
-
-    // --- Lifecycle & Permissions ---
 
     override fun onResume() {
         super.onResume()
