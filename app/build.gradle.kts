@@ -6,6 +6,7 @@ plugins {
 android {
     namespace = "com.procamera"
     compileSdk = 34
+    ndkVersion = "25.1.8937393"
 
     defaultConfig {
         applicationId = "com.procamera"
@@ -33,7 +34,6 @@ android {
 }
 
 dependencies {
-    
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.activity:activity-ktx:1.8.0")
