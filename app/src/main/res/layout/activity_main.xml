@@ -10,25 +10,52 @@
         android:layout_height="match_parent"
         android:layout_centerInParent="true" />
 
-    <View
+    <RelativeLayout
         android:id="@+id/focus_ring"
-        android:layout_width="80dp"
-        android:layout_height="80dp"
-        android:background="@drawable/focus_frame"
-        android:visibility="gone" />
+        android:layout_width="76dp"
+        android:layout_height="76dp"
+        android:visibility="gone"
+        android:layout_centerInParent="true">
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/focus_frame" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerHorizontal="true"
+            android:layout_alignParentBottom="true"
+            android:layout_marginBottom="-18dp"
+            android:background="#99000000"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp">
+
+            <TextView
+                android:id="@+id/focus_ev_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="EV 0.0"
+                android:textColor="#FFD700"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </RelativeLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="64dp"
         android:layout_alignParentTop="true"
         android:gravity="center_vertical"
         android:paddingHorizontal="24dp"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:background="#33000000">
 
         <ImageView
             android:id="@+id/btn_flash"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
             android:src="@drawable/ic_flash_off"
             android:background="@android:drawable/list_selector_background"
             android:contentDescription="Flash" />
@@ -40,7 +67,7 @@
             android:layout_marginStart="24dp"
             android:text="4:3"
             android:textColor="@android:color/white"
-            android:textSize="16sp"
+            android:textSize="14sp"
             android:textStyle="bold"
             android:background="@android:drawable/list_selector_background"
             android:padding="8dp" />
@@ -51,38 +78,85 @@
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         android:orientation="vertical"
-        android:paddingBottom="24dp">
+        android:background="#4D000000"
+        android:paddingBottom="32dp"
+        android:paddingTop="12dp">
 
         <LinearLayout
             android:id="@+id/slider_panel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="24dp"
-            android:paddingBottom="12dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingBottom="20dp"
             android:visibility="gone">
+
+            <TextView
+                android:id="@+id/slider_value_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ISO 100"
+                android:textColor="#FFD700"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:paddingBottom="8dp" />
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:paddingHorizontal="24dp">
+
+                <HorizontalScrollView
+                    android:id="@+id/ruler_scroll_view"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scrollbars="none"
+                    android:fillViewport="true">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <View
+                            android:layout_width="200dp"
+                            android:layout_height="1dp"
+                            android:background="@android:color/transparent" />
+
+                        <LinearLayout
+                            android:id="@+id/ruler_container"
+                            android:layout_width="wrap_content"
+                            android:layout_height="24dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal" />
+
+                        <View
+                            android:layout_width="200dp"
+                            android:layout_height="1dp"
+                            android:background="@android:color/transparent" />
+                    </LinearLayout>
+                </HorizontalScrollView>
+
+                <View
+                    android:layout_width="2dp"
+                    android:layout_height="28dp"
+                    android:layout_centerInParent="true"
+                    android:background="#FFD700" />
+            </RelativeLayout>
 
             <TextView
                 android:id="@+id/btn_auto_toggle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="#33FFFFFF"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="6dp"
                 android:text="AUTO"
                 android:textColor="@android:color/white"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:paddingEnd="12dp" />
-
-            <SeekBar
-                android:id="@+id/setting_seekbar"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:max="100"
-                android:progress="0"
-                android:progressTint="#00FF00"
-                android:thumbTint="#00FF00"
-                android:background="@android:color/transparent" />
+                android:textSize="12sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
@@ -91,7 +165,7 @@
             android:orientation="horizontal"
             android:gravity="center"
             android:paddingHorizontal="16dp"
-            android:paddingBottom="16dp">
+            android:paddingBottom="20dp">
 
             <TextView
                 android:id="@+id/btn_af"
@@ -101,7 +175,8 @@
                 android:gravity="center"
                 android:text="AF\nAUTO"
                 android:textColor="@android:color/white"
-                android:textSize="12sp" />
+                android:textSize="11sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/btn_iso"
@@ -111,7 +186,8 @@
                 android:gravity="center"
                 android:text="ISO\nAUTO"
                 android:textColor="@android:color/white"
-                android:textSize="12sp" />
+                android:textSize="11sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/btn_wb"
@@ -121,7 +197,8 @@
                 android:gravity="center"
                 android:text="WB\nAUTO"
                 android:textColor="@android:color/white"
-                android:textSize="12sp" />
+                android:textSize="11sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/btn_s"
@@ -131,7 +208,8 @@
                 android:gravity="center"
                 android:text="S\nAUTO"
                 android:textColor="@android:color/white"
-                android:textSize="12sp" />
+                android:textSize="11sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/btn_ev"
@@ -141,28 +219,29 @@
                 android:gravity="center"
                 android:text="EV\n0.0"
                 android:textColor="@android:color/white"
-                android:textSize="12sp" />
+                android:textSize="11sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingHorizontal="32dp">
+            android:paddingHorizontal="40dp">
 
             <ImageView
                 android:id="@+id/thumbnail_view"
-                android:layout_width="50dp"
-                android:layout_height="50dp"
+                android:layout_width="54dp"
+                android:layout_height="54dp"
                 android:layout_centerVertical="true"
                 android:layout_alignParentStart="true"
                 android:scaleType="centerCrop"
-                android:background="#333333"
+                android:background="#222222"
                 android:contentDescription="Thumbnail" />
 
             <View
                 android:id="@+id/btn_capture"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
+                android:layout_width="74dp"
+                android:layout_height="74dp"
                 android:layout_centerInParent="true"
                 android:background="@drawable/shutter_button" />
         </RelativeLayout>
