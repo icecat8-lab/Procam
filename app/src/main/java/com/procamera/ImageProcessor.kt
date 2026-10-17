@@ -9,6 +9,7 @@ class ImageProcessor {
 
     external fun processRawPro(
         rawData: ByteArray,
+        outputData: ByteArray,
         width: Int,
         height: Int,
         rowStride: Int,
