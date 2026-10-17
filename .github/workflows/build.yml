@@ -1,0 +1,41 @@
+name: Build Debug APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up JDK 17
+      uses: actions/setup-java@v5
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Build Debug APK
+      # FIX: was pinned to gradle 8.2 (AGP 8.5.2 requires Gradle 8.7+).
+      # Now uses the project's Gradle Wrapper (gradle-8.7 via gradle-wrapper.properties).
+      run: |
+        chmod +x gradlew
+        ./gradlew :app:assembleDebug --no-daemon
+
+    - name: Publish to GitHub Releases
+      uses: softprops/action-gh-release@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: latest
+        name: ProCamera Build
+        draft: false
+        prerelease: false
+        files: app/build/outputs/apk/debug/app-debug.apk

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- iOS-style focus ring (yellow square with corner brackets) -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Thin yellow border -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/focus_ring_normal" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+</layer-list>

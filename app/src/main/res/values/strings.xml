@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pro Camera</string>
+
+    <!-- Mode labels -->
+    <string name="mode_af">AF</string>
+    <string name="mode_iso">ISO</string>
+    <string name="mode_wb">WB</string>
+    <string name="mode_s">S</string>
+    <string name="mode_ev">EV</string>
+    <string name="mode_auto">AUTO</string>
+
+    <!-- Ratio -->
+    <string name="ratio_4_3">4:3</string>
+    <string name="ratio_16_9">16:9</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_flash">Flash toggle</string>
+    <string name="cd_shutter">Shutter button</string>
+    <string name="cd_thumbnail">Last captured thumbnail</string>
+    <string name="cd_focus_ring">Focus ring</string>
+
+    <!-- Toasts -->
+    <string name="toast_no_camera">ไม่พบกล้องหลัง</string>
+    <string name="toast_camera_not_ready">กล้องยังไม่พร้อม</string>
+    <string name="toast_no_viewer_app">ไม่พบแอปสำหรับดูรูปภาพ</string>
+    <string name="toast_camera_permission_required">จำเป็นต้องใช้สิทธิ์กล้องถ่ายรูป</string>
+    <string name="toast_camera_error">กล้องขัดข้อง (error %1$d)</string>
+    <string name="toast_open_camera_failed">เปิดกล้องไม่สำเร็จ</string>
+    <string name="toast_manual_not_supported">อุปกรณ์นี้ไม่รองรับโหมดปรับค่าเอง (Manual)</string>
+    <string name="toast_flash_not_available">อุปกรณ์นี้ไม่มีแฟลช</string>
+</resources>

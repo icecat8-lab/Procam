@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 28+: display cutout mode (moved out of base values to satisfy lintVitalRelease) -->
+<resources>
+    <style name="Theme.ProCamera" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>
