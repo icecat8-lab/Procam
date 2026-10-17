@@ -3,13 +3,16 @@ package com.procamera
 import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
-import android.graphics.SurfaceTexture
+import android.graphics.Matrix
 import android.graphics.Rect
+import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
 import android.hardware.camera2.params.MeteringRectangle
-import android.media.ImageReader
 import android.media.ExifInterface
+import android.media.ImageReader
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -17,6 +20,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.Log
 import android.view.Surface
 import android.view.TextureView
 import android.widget.Toast
@@ -24,7 +28,6 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.exp
 import kotlin.math.ln
-import android.graphics.Bitmap
 
 class CameraController(private val context: Context, private val textureView: TextureView) {
 
@@ -50,11 +53,15 @@ class CameraController(private val context: Context, private val textureView: Te
     var isAELocked = false
     var isFlashOn = false
 
+    
     var minIso = 50; var maxIso = 3200
     var minExp = 1000000L; var maxExp = 1000000000L
     var maxFocus = 10f
+    var minEv = -3; var maxEv = 3
+    var evStep = 1f 
     var isManualSupported = false
     private var sensorArraySize: Rect? = null
+    
     
     private var lastBlackLevel = 64f
     private var lastRGain = 1.0f
@@ -62,7 +69,7 @@ class CameraController(private val context: Context, private val textureView: Te
     private var lastBGain = 1.0f
     private var lastCcm = floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f)
     
-    // EXIF Metadata Trackers
+    
     private var lastJpegOrientation = 0
     private var lastIsoCapture = 100
     private var lastExpTimeCapture = 0L
@@ -117,6 +124,17 @@ class CameraController(private val context: Context, private val textureView: Te
         openCamera()
     }
 
+    fun closeCamera() {
+        captureSession?.close()
+        captureSession = null
+        cameraDevice?.close()
+        cameraDevice = null
+        imageReader?.close()
+        imageReader = null
+        rawImageReader?.close()
+        rawImageReader = null
+    }
+
     @SuppressLint("MissingPermission")
     fun openCamera() {
         try {
@@ -128,11 +146,16 @@ class CameraController(private val context: Context, private val textureView: Te
             val capabilities = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
             isManualSupported = capabilities?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true
             
+            
             sensorArraySize = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
             chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { minIso = it.lower; maxIso = it.upper }
             chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { minExp = it.lower; maxExp = it.upper }
             chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)?.let { maxFocus = it }
             
+            
+            chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.let { minEv = it.lower; maxEv = it.upper }
+            chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)?.let { evStep = it.toFloat() }
+
             chars.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)?.let { modes ->
                 val list = modes.toMutableList()
                 list.remove(CaptureRequest.CONTROL_AWB_MODE_AUTO)
@@ -142,52 +165,60 @@ class CameraController(private val context: Context, private val textureView: Te
             val imgWidth = if (is16by9) 1920 else 1440
             val imgHeight = 1080
 
+            
             imageReader = ImageReader.newInstance(imgWidth, imgHeight, ImageFormat.JPEG, 1)
             imageReader?.setOnImageAvailableListener({ reader ->
                 backgroundHandler?.post {
-                    val image = reader.acquireLatestImage()
-                    val buffer = image.planes[0].buffer
-                    val bytes = ByteArray(buffer.remaining())
-                    buffer.get(bytes)
-                    image.close()
+                    try {
+                        val image = reader.acquireLatestImage()
+                        val buffer = image.planes[0].buffer
+                        val bytes = ByteArray(buffer.remaining())
+                        buffer.get(bytes)
+                        image.close()
+                        
+                        saveJpegToGallery(bytes)
+                    } catch (e: Exception) { Log.e("Camera", "JPEG Save Error", e) }
                 }
             }, backgroundHandler)
 
-            val rawSizes = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                ?.getOutputSizes(ImageFormat.RAW_SENSOR)
-
+            
+            val rawSizes = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.getOutputSizes(ImageFormat.RAW_SENSOR)
             if (!rawSizes.isNullOrEmpty()) {
                 val rawWidth = rawSizes[0].width
                 val rawHeight = rawSizes[0].height
                 
                 rawImageReader = ImageReader.newInstance(rawWidth, rawHeight, ImageFormat.RAW_SENSOR, 1).apply {
                     setOnImageAvailableListener({ reader ->
-                        val image = reader.acquireLatestImage()
-                        val plane = image.planes[0]
-                        val buffer = plane.buffer
-                        val rowStride = plane.rowStride
-                        val bytes = ByteArray(buffer.remaining())
-                        buffer.get(bytes)
-                        
-                        val outWidth = image.width / 2
-                        val outHeight = image.height / 2
-                        val outBytes = ByteArray(outWidth * outHeight * 4)
+                        backgroundHandler?.post {
+                            try {
+                                val image = reader.acquireLatestImage()
+                                val plane = image.planes[0]
+                                val buffer = plane.buffer
+                                val rowStride = plane.rowStride
+                                val bytes = ByteArray(buffer.remaining())
+                                buffer.get(bytes)
+                                
+                                val outWidth = image.width / 2
+                                val outHeight = image.height / 2
+                                val outBytes = ByteArray(outWidth * outHeight * 4)
 
-                        ImageProcessor().processRawPro(bytes, outBytes, image.width, image.height, rowStride, lastBlackLevel, lastRGain, lastGGain, lastBGain, lastCcm)
-                        
-                        val bitmap = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
-                        val outBuffer = java.nio.ByteBuffer.wrap(outBytes)
-                        bitmap.copyPixelsFromBuffer(outBuffer)
-                        
-                        saveBitmapToGallery(bitmap)
-
-                        image.close()
+                                
+                                
+                                
+                                val bitmap = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888)
+                                val outBuffer = java.nio.ByteBuffer.wrap(outBytes)
+                                bitmap.copyPixelsFromBuffer(outBuffer)
+                                
+                                saveBitmapToGallery(bitmap)
+                                image.close()
+                            } catch (e: Exception) { Log.e("Camera", "RAW Save Error", e) }
+                        }
                     }, backgroundHandler)
                 }
             }
 
             cameraManager.openCamera(cameraId, stateCallback, backgroundHandler)
-        } catch (e: CameraAccessException) { }
+        } catch (e: CameraAccessException) { Log.e("Camera", "Open Camera Error", e) }
     }
 
     private val stateCallback = object : CameraDevice.StateCallback() {
@@ -195,12 +226,8 @@ class CameraController(private val context: Context, private val textureView: Te
             cameraDevice = camera
             startPreview()
         }
-        override fun onDisconnected(camera: CameraDevice) {
-            camera.close(); cameraDevice = null
-        }
-        override fun onError(camera: CameraDevice, error: Int) {
-            camera.close(); cameraDevice = null
-        }
+        override fun onDisconnected(camera: CameraDevice) { closeCamera() }
+        override fun onError(camera: CameraDevice, error: Int) { closeCamera() }
     }
 
     private fun startPreview() {
@@ -267,6 +294,7 @@ class CameraController(private val context: Context, private val textureView: Te
         } catch (e: Exception) { }
     }
 
+    
     fun calculateIso(progress: Int): Int {
         if (progress == 0) return minIso
         return minIso + ((maxIso - minIso) * ((progress - 1) / 99f)).toInt()
@@ -290,8 +318,24 @@ class CameraController(private val context: Context, private val textureView: Te
         val index = 1 + ((progress - 1) * (maxIdx - 1) / 99)
         return supportedWbModes[index]
     }
-    
     fun getWbLabel(mode: Int): String = wbLabelsMap[mode] ?: "WB"
+
+    
+    fun calculateEv(progress: Int): Int {
+        if (progress == 50) return 0
+        return if (progress < 50) {
+            minEv + ((progress / 49f) * -minEv).toInt()
+        } else {
+            (maxEv * ((progress - 50) / 50f)).toInt()
+        }
+    }
+    fun getEvLabel(progress: Int): String {
+        val evInt = calculateEv(progress)
+        if (evInt == 0) return "0.0"
+        val evFloat = evInt * evStep
+        val sign = if (evFloat > 0) "+" else ""
+        return String.format(Locale.US, "%s%.1f", sign, evFloat)
+    }
 
     fun applySettings() {
         val builder = previewRequestBuilder ?: return
@@ -321,18 +365,15 @@ class CameraController(private val context: Context, private val textureView: Te
     }
 
     fun takePicture(deviceRotation: Int) {
-        val camera = cameraDevice
-        val session = captureSession
-        
+        val camera = cameraDevice; val session = captureSession
         if (camera == null || session == null) {
-            Toast.makeText(context, "กล้องยังไม่พร้อม", Toast.LENGTH_SHORT).show()
+            mainUIHandler.post { Toast.makeText(context, "กล้องยังไม่พร้อม", Toast.LENGTH_SHORT).show() }
             return
         }
 
         try {
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-            captureBuilder.addTarget(imageReader!!.surface)
-            rawImageReader?.surface?.let { captureBuilder.addTarget(it) }
+            imageReader?.surface?.let { captureBuilder.addTarget(it) }
             
             val characteristics = cameraManager.getCameraCharacteristics(camera.id)
             val sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
@@ -342,17 +383,11 @@ class CameraController(private val context: Context, private val textureView: Te
                 Surface.ROTATION_270 -> 270
                 else -> 0
             }
-            val jpegOrientation = (sensorOrientation - surfaceRotation + 360) % 360
-            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, jpegOrientation)
+            lastJpegOrientation = (sensorOrientation - surfaceRotation + 360) % 360
+            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, lastJpegOrientation)
             
-            lastJpegOrientation = jpegOrientation
-
-            if (isAfAuto) {
-                captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-            } else {
-                captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
-                captureBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, currentFocusDistance)
-            }
+            if (isAfAuto) captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            else { captureBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF); captureBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, currentFocusDistance) }
 
             if (!isIsoAuto || !isSpeedAuto) {
                 captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
@@ -363,12 +398,7 @@ class CameraController(private val context: Context, private val textureView: Te
                 captureBuilder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
             }
             
-            if (isFlashOn) {
-                captureBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_SINGLE)
-            } else {
-                captureBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
-            }
-
+            captureBuilder.set(CaptureRequest.FLASH_MODE, if (isFlashOn) CaptureRequest.FLASH_MODE_SINGLE else CaptureRequest.FLASH_MODE_OFF)
             captureBuilder.set(CaptureRequest.CONTROL_AWB_MODE, currentWb)
             captureBuilder.set(CaptureRequest.CONTROL_AE_LOCK, isAELocked)
             captureBuilder.set(CaptureRequest.CONTROL_AWB_LOCK, isAELocked)
@@ -379,17 +409,12 @@ class CameraController(private val context: Context, private val textureView: Te
                     super.onCaptureCompleted(session, request, result)
                     
                     result.get(CaptureResult.COLOR_CORRECTION_GAINS)?.let {
-                        lastRGain = it.red
-                        lastGGain = it.greenEven
-                        lastBGain = it.blue
+                        lastRGain = it.red; lastGGain = it.greenEven; lastBGain = it.blue
                     }
-                    
                     result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM)?.let {
                         for (i in 0..8) lastCcm[i] = it.getElement(i % 3, i / 3).toFloat()
                     }
-                    
                     lastBlackLevel = result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL)?.get(0) ?: 64f
-                    
                     lastIsoCapture = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: 100
                     lastExpTimeCapture = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
                     lastAperture = result.get(CaptureResult.LENS_APERTURE) ?: 0f
@@ -401,60 +426,12 @@ class CameraController(private val context: Context, private val textureView: Te
         } catch (e: CameraAccessException) { }
     }
 
-    private fun saveBitmapToGallery(bitmap: Bitmap) {
+    
+    
+    
+    private fun saveJpegToGallery(bytes: ByteArray) {
         val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val filename = "PRO_RAW_$timeStamp.jpg"
+        val filename = "PRO_JPG_$timeStamp.jpg"
 
         val contentValues = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ProCamera")
-            }
-        }
-
-        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-        try {
-            uri?.let { finalUri ->
-                context.contentResolver.openOutputStream(finalUri)?.use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
-                }
-                
-                context.contentResolver.openFileDescriptor(finalUri, "rw")?.use { pfd ->
-                    val exif = ExifInterface(pfd.fileDescriptor)
-                    exif.setAttribute(ExifInterface.TAG_MAKE, Build.MANUFACTURER)
-                    exif.setAttribute(ExifInterface.TAG_MODEL, Build.MODEL)
-                    exif.setAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY, lastIsoCapture.toString())
-                    
-                    val expTimeSec = lastExpTimeCapture / 1_000_000_000.0
-                    exif.setAttribute(ExifInterface.TAG_EXPOSURE_TIME, expTimeSec.toString())
-                    
-                    exif.setAttribute(ExifInterface.TAG_F_NUMBER, lastAperture.toString())
-                    exif.setAttribute(ExifInterface.TAG_FOCAL_LENGTH, "${(lastFocalLength * 1000).toInt()}/1000")
-                    
-                    val datetime = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).format(Date())
-                    exif.setAttribute(ExifInterface.TAG_DATETIME, datetime)
-                    
-                    val orientationTag = when (lastJpegOrientation) {
-                        90 -> ExifInterface.ORIENTATION_ROTATE_90
-                        180 -> ExifInterface.ORIENTATION_ROTATE_180
-                        270 -> ExifInterface.ORIENTATION_ROTATE_270
-                        else -> ExifInterface.ORIENTATION_NORMAL
-                    }
-                    exif.setAttribute(ExifInterface.TAG_ORIENTATION, orientationTag.toString())
-                    
-                    exif.saveAttributes()
-                }
-
-                mainUIHandler.post { onImageSaved?.invoke(finalUri) }
-            }
-        } catch (e: Exception) { }
-    }
-
-    fun closeCamera() {
-        captureSession?.close(); captureSession = null
-        cameraDevice?.close(); cameraDevice = null
-        imageReader?.close(); imageReader = null
-        rawImageReader?.close(); rawImageReader = null
-    }
-}
+            put(MediaStore.MediaColumns.DISPLAY_NAME, filenam
