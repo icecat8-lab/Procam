@@ -306,7 +306,6 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
-        cameraController.closeCanvas()
         cameraController.closeCamera()
         cameraController.stopBackgroundThread()
         super.onPause()
