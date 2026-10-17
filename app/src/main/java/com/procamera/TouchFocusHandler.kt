@@ -1,46 +1,52 @@
 package com.procamera
 
-import android.annotation.SuppressLint
-import android.content.Context
-import android.view.GestureDetector
-import android.view.MotionEvent
 import android.view.View
+import android.view.TextureView
+import android.graphics.Rect
+import android.view.MotionEvent
 
 class TouchFocusHandler(
-    context: Context,
-    private val viewFinder: View,
+    context: android.content.Context,
+    private val viewFinder: TextureView,
     private val focusRing: View,
     private val cameraController: CameraController
 ) : View.OnTouchListener {
 
     private var isFrameLocked = false
     
-    
     private val hideRingRunnable = Runnable {
         if (!isFrameLocked) focusRing.visibility = View.GONE
     }
 
-    private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+    private val gestureDetector = android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
         override fun onLongPress(e: MotionEvent) {
             isFrameLocked = true
             focusRing.removeCallbacks(hideRingRunnable)
             focusRing.visibility = View.VISIBLE
             focusRing.setBackgroundResource(R.drawable.focus_frame_locked)
-            focusRing.x = (e.x + viewFinder.x) - (focusRing.width / 2f)
-            focusRing.y = (e.y + viewFinder.y) - (focusRing.height / 2f)
+            
+            val ringW = focusRing.width.toFloat()
+            val ringH = focusRing.height.toFloat()
+            focusRing.x = (e.x - ringW / 2f).coerceIn(0f, viewFinder.width - ringW)
+            focusRing.y = (e.y - ringH / 2f).coerceIn(0f, viewFinder.height - ringH)
             
             cameraController.isAELocked = true
             cameraController.applySettings()
         }
     })
 
-    @SuppressLint("ClickableViewAccessibility")
     override fun onTouch(v: View, event: MotionEvent): Boolean {
         gestureDetector.onTouchEvent(event)
         
-        val touchX = event.x + viewFinder.x
-        val touchY = event.y + viewFinder.y
+        val ringW = focusRing.width.toFloat()
+        val ringH = focusRing.height.toFloat()
         
+        val clampedX = event.x.coerceIn(0f, viewFinder.width.toFloat())
+        val clampedY = event.y.coerceIn(0f, viewFinder.height.toFloat())
+        
+        val ringX = (clampedX - ringW / 2f).coerceIn(0f, viewFinder.width - ringW)
+        val ringY = (clampedY - ringH / 2f).coerceIn(0f, viewFinder.height - ringH)
+
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 if (isFrameLocked) {
@@ -51,19 +57,18 @@ class TouchFocusHandler(
                 focusRing.removeCallbacks(hideRingRunnable)
                 focusRing.visibility = View.VISIBLE
                 focusRing.setBackgroundResource(R.drawable.focus_frame)
-                focusRing.x = touchX - (focusRing.width / 2f)
-                focusRing.y = touchY - (focusRing.height / 2f)
+                focusRing.x = ringX
+                focusRing.y = ringY
             }
             MotionEvent.ACTION_MOVE -> {
                 if (!isFrameLocked) {
-                    focusRing.x = touchX - (focusRing.width / 2f)
-                    focusRing.y = touchY - (focusRing.height / 2f)
+                    focusRing.x = ringX
+                    focusRing.y = ringY
                 }
             }
             MotionEvent.ACTION_UP -> {
                 if (!isFrameLocked) {
-                    cameraController.triggerFocusAtPoint(event.x, event.y, viewFinder.width, viewFinder.height)
-                    
+                    cameraController.triggerFocusAtPoint(clampedX, clampedY, viewFinder.width, viewFinder.height)
                     focusRing.postDelayed(hideRingRunnable, 2000)
                 }
             }
