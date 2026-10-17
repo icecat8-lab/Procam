@@ -477,7 +477,8 @@ class CameraController(private val context: Context, private val textureView: Te
                 val exif = ExifInterface(pfd.fileDescriptor)
                 exif.setAttribute(ExifInterface.TAG_MAKE, Build.MANUFACTURER)
                 exif.setAttribute(ExifInterface.TAG_MODEL, Build.MODEL)
-                exif.setAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY, lastIsoCapture.toString())
+                exif.setAttribute(ExifInterface.TAG_ISO_SPEED_RATINGS, lastIsoCapture.toString())
+
                 
                 val expTimeSec = lastExpTimeCapture / 1_000_000_000.0
                 exif.setAttribute(ExifInterface.TAG_EXPOSURE_TIME, expTimeSec.toString())
