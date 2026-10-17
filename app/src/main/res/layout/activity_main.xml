@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/black_pure">
@@ -57,11 +58,13 @@
     </RelativeLayout>
 
     <!-- ============== TOP BAR ============== -->
+    <!-- FIX: marginTop moved from hardcoded 28dp to real WindowInsets (status bar / cutout safe) -->
     <LinearLayout
+        android:id="@+id/top_bar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:layout_alignParentTop="true"
-        android:layout_marginTop="28dp"
+        android:layout_marginTop="0dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="20dp">
@@ -107,12 +110,14 @@
     </LinearLayout>
 
     <!-- ============== BOTTOM CONTROLS ============== -->
+    <!-- FIX: paddingBottom now applied from real WindowInsets (navigation bar safe) -->
     <LinearLayout
+        android:id="@+id/bottom_controls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         android:orientation="vertical"
-        android:paddingBottom="32dp"
+        android:paddingBottom="0dp"
         android:paddingTop="8dp">
 
         <!-- Slider panel (iOS frosted card) -->
