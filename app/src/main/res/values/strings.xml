@@ -25,4 +25,8 @@
     <string name="toast_camera_not_ready">กล้องยังไม่พร้อม</string>
     <string name="toast_no_viewer_app">ไม่พบแอปสำหรับดูรูปภาพ</string>
     <string name="toast_camera_permission_required">จำเป็นต้องใช้สิทธิ์กล้องถ่ายรูป</string>
+    <string name="toast_camera_error">กล้องขัดข้อง (error %1$d)</string>
+    <string name="toast_open_camera_failed">เปิดกล้องไม่สำเร็จ</string>
+    <string name="toast_manual_not_supported">อุปกรณ์นี้ไม่รองรับโหมดปรับค่าเอง (Manual)</string>
+    <string name="toast_flash_not_available">อุปกรณ์นี้ไม่มีแฟลช</string>
 </resources>
