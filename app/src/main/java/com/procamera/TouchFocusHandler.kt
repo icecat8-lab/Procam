@@ -59,9 +59,11 @@ class TouchFocusHandler(
     }
 
     private fun showFocusRingAt(rawX: Float, rawY: Float, locked: Boolean) {
-        // FIX: was using focusRing.width before the view was laid out
-        val ringW = if (focusRing.width > 0) focusRing.width.toFloat() else 228f
-        val ringH = if (focusRing.height > 0) focusRing.height.toFloat() else 228f
+        // FIX: was using focusRing.width before layout (fallback 228px didn't match the
+        // 92dp ring in the layout either — now falls back to the real 92dp size)
+        val fallbackSize = 92f * viewFinder.resources.displayMetrics.density
+        val ringW = if (focusRing.width > 0) focusRing.width.toFloat() else fallbackSize
+        val ringH = if (focusRing.height > 0) focusRing.height.toFloat() else fallbackSize
 
         val clampedX = rawX.coerceIn(0f, viewFinder.width.toFloat())
         val clampedY = rawY.coerceIn(0f, viewFinder.height.toFloat())

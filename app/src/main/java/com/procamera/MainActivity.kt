@@ -3,8 +3,12 @@ package com.procamera
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.SurfaceTexture
+import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +17,7 @@ import android.os.Looper
 import android.util.DisplayMetrics
 import android.view.TextureView
 import android.view.View
+import android.view.ViewGroup
 import android.view.animation.AnimationUtils
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -23,6 +28,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
+import androidx.core.view.updatePadding
+import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -64,7 +75,7 @@ class MainActivity : ComponentActivity() {
         if (permissions[Manifest.permission.CAMERA] == true) {
             startCameraIfReady()
         } else {
-            Toast.makeText(this, "จำเป็นต้องใช้สิทธิ์กล้องถ่ายรูป", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, R.string.toast_camera_permission_required, Toast.LENGTH_LONG).show()
             finish()
         }
     }
@@ -72,11 +83,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Edge-to-edge + fullscreen (iOS-style)
-        window.decorView.systemUiVisibility = (android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            or android.view.View.SYSTEM_UI_FLAG_LOW_PROFILE)
+        // Edge-to-edge (modern non-deprecated API — replaces systemUiVisibility flags)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
 
@@ -85,6 +93,7 @@ class MainActivity : ComponentActivity() {
         initViews()
         setupCameraController()
         setupListeners()
+        applyWindowInsets()
 
         val touchHandler = TouchFocusHandler(this, viewFinder, focusRing, cameraController)
         viewFinder.setOnTouchListener(touchHandler)
@@ -130,7 +139,30 @@ class MainActivity : ComponentActivity() {
 
         cameraController.onImageSaved = { uri ->
             viewModel.latestImageUri = uri
-            thumbnailView.setImageURI(uri)
+            // FIX: decode a small downscaled thumbnail instead of the full-res image
+            // (setImageURI on a 12–50 MP JPEG could allocate 50–200 MB for a 48dp view)
+            loadThumbnailInto(uri)
+        }
+    }
+
+    /**
+     * FIX: top/bottom spacing now follows real WindowInsets (status bar, nav bar,
+     * display cutout) instead of a hardcoded 28dp margin that overlapped cutouts.
+     */
+    private fun applyWindowInsets() {
+        val root = findViewById<View>(R.id.root_layout)
+        val topBar = findViewById<View>(R.id.top_bar)
+        val bottomControls = findViewById<LinearLayout>(R.id.bottom_controls)
+        val density = resources.displayMetrics.density
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            topBar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                topMargin = bars.top + (8 * density).toInt()
+            }
+            bottomControls.updatePadding(bottom = bars.bottom + (24 * density).toInt())
+            insets
         }
     }
 
@@ -143,6 +175,10 @@ class MainActivity : ComponentActivity() {
         }
 
         btnFlash.setOnClickListener {
+            if (!cameraController.flashAvailable) {
+                Toast.makeText(this, R.string.toast_flash_not_available, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
             cameraController.isFlashOn = !cameraController.isFlashOn
             btnFlash.setImageResource(
                 if (cameraController.isFlashOn) R.drawable.ic_flash_on else R.drawable.ic_flash_off
@@ -172,10 +208,20 @@ class MainActivity : ComponentActivity() {
             mainHandler.postDelayed({ viewFinder.alpha = 1.0f }, 80)
         }
 
-        btnAf.setOnClickListener { toggleSlider("AF", viewModel.afProgress) }
-        btnIso.setOnClickListener { toggleSlider("ISO", viewModel.isoProgress) }
+        btnAf.setOnClickListener {
+            if (cameraController.maxFocus <= 0f) {
+                toastManualUnsupported()
+            } else toggleSlider("AF", viewModel.afProgress)
+        }
+        btnIso.setOnClickListener {
+            if (!cameraController.isManualSupported) toastManualUnsupported()
+            else toggleSlider("ISO", viewModel.isoProgress)
+        }
         btnWb.setOnClickListener { toggleSlider("WB", viewModel.wbProgress) }
-        btnS.setOnClickListener { toggleSlider("S", viewModel.sProgress) }
+        btnS.setOnClickListener {
+            if (!cameraController.isManualSupported) toastManualUnsupported()
+            else toggleSlider("S", viewModel.sProgress)
+        }
         btnEv.setOnClickListener { toggleSlider("EV", viewModel.evProgress) }
 
         settingSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -346,7 +392,7 @@ class MainActivity : ComponentActivity() {
         try {
             startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(this, "ไม่พบแอปสำหรับดูรูปภาพ", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.toast_no_viewer_app, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -372,7 +418,7 @@ class MainActivity : ComponentActivity() {
         } else {
             viewFinder.surfaceTextureListener = surfaceTextureListener
         }
-        checkThumbnailExists()
+        viewModel.latestImageUri?.let { loadThumbnailInto(it) }
     }
 
     override fun onPause() {
@@ -414,25 +460,30 @@ class MainActivity : ComponentActivity() {
         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
     }
 
+    /** iOS-style accent (system yellow) */
+    private fun accentColor(): Int = Color.parseColor("#FFD60A")
+
+    /** Toast shown when the device lacks manual controls capability. */
+    private fun toastManualUnsupported() {
+        Toast.makeText(this, R.string.toast_manual_not_supported, Toast.LENGTH_SHORT).show()
+    }
+
     /**
-     * FIX: was running contentResolver query on the main thread → ANR risk.
-     * Now uses lifecycleScope + Dispatchers.IO.
+     * FIX: was checkThumbnailExists() → setImageURI() which decoded the FULL-resolution
+     * image (12–50 MP = 50–200 MB bitmap) into a 48dp thumbnail → OOM/jank risk.
+     * Now validates existence and decodes a small, EXIF-corrected bitmap off the main thread.
      */
-    private fun checkThumbnailExists() {
-        val uri = viewModel.latestImageUri ?: return
+    private fun loadThumbnailInto(uri: Uri) {
         lifecycleScope.launch {
-            val valid = withContext(Dispatchers.IO) {
+            val bitmap = withContext(Dispatchers.IO) {
                 try {
-                    val cursor = contentResolver.query(uri, null, null, null, null)
-                    cursor?.use {
-                        it.count > 0 && it.moveToFirst()
-                    } ?: false
+                    decodeThumbnail(uri, 256)
                 } catch (e: Exception) {
-                    false
+                    null
                 }
             }
-            if (valid) {
-                thumbnailView.setImageURI(uri)
+            if (bitmap != null) {
+                thumbnailView.setImageBitmap(bitmap)
             } else {
                 viewModel.latestImageUri = null
                 thumbnailView.setImageDrawable(null)
@@ -440,6 +491,47 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** iOS-style accent (system yellow) */
-    private fun accentColor(): Int = Color.parseColor("#FFD60A")
+    /** Decode a downscaled, EXIF-rotated square thumbnail for [uri]. */
+    private fun decodeThumbnail(uri: Uri, targetSize: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, bounds)
+        } ?: return null
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= targetSize &&
+            bounds.outHeight / (sample * 2) >= targetSize
+        ) {
+            sample *= 2
+        }
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val src = contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, opts)
+        } ?: return null
+
+        val rotated = rotateByExif(uri, src)
+        return ThumbnailUtils.extractThumbnail(
+            rotated, targetSize, targetSize, ThumbnailUtils.OPTIONS_RECYCLE_INPUT
+        )
+    }
+
+    private fun rotateByExif(uri: Uri, bmp: Bitmap): Bitmap = try {
+        val orientation = contentResolver.openInputStream(uri)?.use {
+            ExifInterface(it).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+            )
+        } ?: ExifInterface.ORIENTATION_NORMAL
+        val rotation = when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        if (rotation == 0f) bmp else Bitmap.createBitmap(
+            bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(rotation) }, true
+        )
+    } catch (e: Exception) {
+        bmp
+    }
 }

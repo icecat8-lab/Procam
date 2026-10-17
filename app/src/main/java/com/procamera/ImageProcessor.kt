@@ -17,6 +17,8 @@ class ImageProcessor {
         rGain: Float,
         gGain: Float,
         bGain: Float,
-        ccm: FloatArray
+        ccm: FloatArray,
+        cfaPattern: Int,
+        whiteLevel: Int
     )
 }
