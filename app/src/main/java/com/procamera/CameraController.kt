@@ -54,6 +54,12 @@ class CameraController(private val context: Context, private val textureView: Te
     var isManualSupported = false
     private var sensorArraySize: Rect? = null
     
+    private var lastBlackLevel = 64f
+    private var lastRGain = 1.0f
+    private var lastGGain = 1.0f
+    private var lastBGain = 1.0f
+    private var lastCcm = floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f)
+    
     var supportedWbModes = intArrayOf(CaptureRequest.CONTROL_AWB_MODE_AUTO)
     val wbLabelsMap = mapOf(
         CaptureRequest.CONTROL_AWB_MODE_AUTO to "AUTO",
@@ -153,7 +159,7 @@ class CameraController(private val context: Context, private val textureView: Te
                         val bytes = ByteArray(buffer.remaining())
                         buffer.get(bytes)
                         
-                        ImageProcessor().processRawImageNative(bytes, image.width, image.height)
+                        ImageProcessor().processRawPro(bytes, image.width, image.height, lastBlackLevel, lastRGain, lastGGain, lastBGain, lastCcm)
                         image.close()
                     }, backgroundHandler)
                 }
@@ -348,6 +354,19 @@ class CameraController(private val context: Context, private val textureView: Te
             session.capture(captureBuilder.build(), object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
                     super.onCaptureCompleted(session, request, result)
+                    
+                    result.get(CaptureResult.COLOR_CORRECTION_GAINS)?.let {
+                        lastRGain = it.red
+                        lastGGain = it.greenEven
+                        lastBGain = it.blue
+                    }
+                    
+                    result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM)?.let {
+                        for (i in 0..8) lastCcm[i] = it.getElement(i % 3, i / 3).toFloat()
+                    }
+                    
+                    lastBlackLevel = result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL)?.get(0) ?: 64f
+                    
                     startPreview()
                 }
             }, backgroundHandler)
