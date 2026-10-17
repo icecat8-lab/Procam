@@ -7,5 +7,14 @@ class ImageProcessor {
         }
     }
 
-    external fun processRawImageNative(rawData: ByteArray, width: Int, height: Int)
+    external fun processRawPro(
+        rawData: ByteArray,
+        width: Int,
+        height: Int,
+        blackLevel: Float,
+        rGain: Float,
+        gGain: Float,
+        bGain: Float,
+        ccm: FloatArray
+    )
 }
