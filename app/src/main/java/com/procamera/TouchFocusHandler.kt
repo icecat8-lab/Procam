@@ -3,6 +3,7 @@ package com.procamera
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.content.Context
+import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.TextureView
 import android.view.View
@@ -14,30 +15,36 @@ class TouchFocusHandler(
     private val focusRing: View,
     private val cameraController: CameraController
 ) : View.OnTouchListener {
-
     private var isFrameLocked = false
 
     private val hideRingRunnable = Runnable {
         if (!isFrameLocked) {
-            // Smooth fade-out instead of instant hide
             focusRing.animate().alpha(0f).setDuration(220).withEndAction {
-                focusRing.visibility = View.GONE
-            }
+                if (!isFrameLocked) focusRing.visibility = View.GONE
+            }.start()
         }
     }
 
-    private val gestureDetector = android.view.GestureDetector(
+    private val lockRunnable = Runnable {
+        if (isFrameLocked) {
+            cameraController.isAELocked = true
+            cameraController.applySettings()
+        }
+    }
+
+    private val gestureDetector = GestureDetector(
         context,
-        object : android.view.GestureDetector.SimpleOnGestureListener() {
+        object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                focusRing.removeCallbacks(lockRunnable)
                 if (isFrameLocked) {
                     isFrameLocked = false
                     cameraController.isAELocked = false
-                    cameraController.applySettings()
                 }
                 showFocusRingAt(e.x, e.y, locked = false)
+
                 cameraController.triggerFocusAtPoint(e.x, e.y, viewFinder.width, viewFinder.height)
                 focusRing.removeCallbacks(hideRingRunnable)
                 focusRing.postDelayed(hideRingRunnable, 2000)
@@ -46,9 +53,11 @@ class TouchFocusHandler(
 
             override fun onLongPress(e: MotionEvent) {
                 isFrameLocked = true
+                focusRing.removeCallbacks(hideRingRunnable)
                 showFocusRingAt(e.x, e.y, locked = true)
-                cameraController.isAELocked = true
-                cameraController.applySettings()
+                cameraController.triggerFocusAtPoint(e.x, e.y, viewFinder.width, viewFinder.height)
+                focusRing.removeCallbacks(lockRunnable)
+                focusRing.postDelayed(lockRunnable, 500)
             }
         }
     )
@@ -58,20 +67,21 @@ class TouchFocusHandler(
         return true
     }
 
-    private fun showFocusRingAt(rawX: Float, rawY: Float, locked: Boolean) {
-        // FIX: was using focusRing.width before layout (fallback 228px didn't match the
-        // 92dp ring in the layout either — now falls back to the real 92dp size)
+    private fun showFocusRingAt(touchX: Float, touchY: Float, locked: Boolean) {
         val fallbackSize = 92f * viewFinder.resources.displayMetrics.density
         val ringW = if (focusRing.width > 0) focusRing.width.toFloat() else fallbackSize
         val ringH = if (focusRing.height > 0) focusRing.height.toFloat() else fallbackSize
 
-        val clampedX = rawX.coerceIn(0f, viewFinder.width.toFloat())
-        val clampedY = rawY.coerceIn(0f, viewFinder.height.toFloat())
+        val clampedX = touchX.coerceIn(0f, viewFinder.width.toFloat())
+        val clampedY = touchY.coerceIn(0f, viewFinder.height.toFloat())
 
-        val ringX = (clampedX - ringW / 2f).coerceIn(0f, maxOf(0f, viewFinder.width - ringW))
-        val ringY = (clampedY - ringH / 2f).coerceIn(0f, maxOf(0f, viewFinder.height - ringH))
+        val ringX = viewFinder.left + (clampedX - ringW / 2f)
+            .coerceIn(0f, maxOf(0f, viewFinder.width - ringW))
+        val ringY = viewFinder.top + (clampedY - ringH / 2f)
+            .coerceIn(0f, maxOf(0f, viewFinder.height - ringH))
 
         focusRing.removeCallbacks(hideRingRunnable)
+        focusRing.animate().cancel()
         focusRing.alpha = 1f
         focusRing.visibility = View.VISIBLE
         focusRing.setBackgroundResource(
@@ -80,7 +90,6 @@ class TouchFocusHandler(
         focusRing.x = ringX
         focusRing.y = ringY
 
-        // iOS-style "pop" animation — scale up quickly then settle
         val scaleX = ObjectAnimator.ofFloat(focusRing, View.SCALE_X, 0.6f, 1f)
         val scaleY = ObjectAnimator.ofFloat(focusRing, View.SCALE_Y, 0.6f, 1f)
         AnimatorSet().apply {
