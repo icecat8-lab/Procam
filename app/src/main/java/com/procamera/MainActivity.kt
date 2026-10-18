@@ -439,13 +439,14 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshThumbnail() {
         lifecycleScope.launch {
-            val uri = viewModel.latestImageUri ?: withContext(Dispatchers.IO) {
+            val latest = withContext(Dispatchers.IO) {
                 try {
                     queryLatestImage()
                 } catch (e: Exception) {
                     null
                 }
             }
+            val uri = latest ?: viewModel.latestImageUri
             if (uri != null) {
                 viewModel.latestImageUri = uri
                 loadThumbnailInto(uri)
