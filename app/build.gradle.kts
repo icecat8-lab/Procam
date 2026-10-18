@@ -1,4 +1,4 @@
-availability{
+plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
@@ -15,7 +15,6 @@ android {
         versionCode = 3
         versionName = "2.2"
 
-       
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
@@ -62,7 +61,6 @@ android {
         }
     }
 
-    
     lint {
         abortOnError = false
         checkReleaseBuilds = false
