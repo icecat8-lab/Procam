@@ -577,7 +577,16 @@ class CameraController(
     private fun supportsAlwaysFlash(): Boolean =
         flashAvailable && aeModes.contains(CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH)
 
-    private fun configureBuilder(b: CaptureRequest.Builder, useFlash: Boolean) {
+    private fun flashWanted(): Boolean {
+        val manualExposure = isManualSupported && (!isIsoAuto || !isSpeedAuto)
+        return isFlashOn && flashAvailable && !manualExposure
+    }
+
+    private fun configureBuilder(
+        b: CaptureRequest.Builder,
+        useFlash: Boolean,
+        stillCapture: Boolean = false
+    ) {
         val manualFocus = !isAfAuto && isManualSupported && maxFocus > 0f
         if (manualFocus) {
             b.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
@@ -606,7 +615,7 @@ class CameraController(
                 b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                 b.set(
                     CaptureRequest.FLASH_MODE,
-                    if (useFlash && flashAvailable) CaptureRequest.FLASH_MODE_SINGLE
+                    if (stillCapture && useFlash && flashAvailable) CaptureRequest.FLASH_MODE_SINGLE
                     else CaptureRequest.FLASH_MODE_OFF
                 )
             }
@@ -622,7 +631,7 @@ class CameraController(
         try {
             synchronized(builderLock) {
                 val builder = previewRequestBuilder ?: return
-                configureBuilder(builder, useFlash = false)
+                configureBuilder(builder, useFlash = flashWanted())
                 session.setRepeatingRequest(builder.build(), previewCallback, backgroundHandler)
             }
         } catch (e: Exception) {
@@ -687,7 +696,7 @@ class CameraController(
                     builder.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(meteringRect))
                 }
                 tapFocusActive = canAutoFocus
-                configureBuilder(builder, useFlash = false)
+                configureBuilder(builder, useFlash = flashWanted())
 
                 if (canAutoFocus) {
                     builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START)
@@ -774,7 +783,8 @@ class CameraController(
         try {
             val builder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             builder.addTarget(jpegSurface)
-            val rawSurface = if (rawStreamActive) rawImageReader?.surface else null
+            val useFlash = flashWanted()
+            val rawSurface = if (rawStreamActive && !useFlash) rawImageReader?.surface else null
             if (rawSurface != null) builder.addTarget(rawSurface)
 
             val surfaceRotation = when (deviceRotation) {
@@ -787,9 +797,7 @@ class CameraController(
             builder.set(CaptureRequest.JPEG_ORIENTATION, jpegOrientation)
             builder.set(CaptureRequest.JPEG_QUALITY, 95.toByte())
 
-            val manualExposure = isManualSupported && (!isIsoAuto || !isSpeedAuto)
-            val useFlash = isFlashOn && flashAvailable && !manualExposure
-            configureBuilder(builder, useFlash)
+            configureBuilder(builder, useFlash, stillCapture = true)
 
             synchronized(builderLock) {
                 previewRequestBuilder?.get(CaptureRequest.CONTROL_AE_REGIONS)?.let {
@@ -808,7 +816,7 @@ class CameraController(
             mainUIHandler.postDelayed(shotWatchdog, 10_000L + exposureMs * 2)
 
             val request = builder.build()
-            if (useFlash && !isAELocked) {
+            if (useFlash && supportsAlwaysFlash() && !isAELocked) {
                 startPrecapture(session, request)
             } else {
                 session.capture(request, stillCaptureCallback, backgroundHandler)
@@ -825,7 +833,7 @@ class CameraController(
             stillState = StillState.WAITING_PRECAPTURE
         }
         mainUIHandler.removeCallbacks(precaptureTimeout)
-        mainUIHandler.postDelayed(precaptureTimeout, 1500)
+        mainUIHandler.postDelayed(precaptureTimeout, 2000)
         try {
             synchronized(builderLock) {
                 val builder = previewRequestBuilder
@@ -833,10 +841,7 @@ class CameraController(
                     fireStillCapture()
                     return
                 }
-                if (supportsAlwaysFlash()) {
-                    builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH)
-                }
-                session.setRepeatingRequest(builder.build(), previewCallback, backgroundHandler)
+                configureBuilder(builder, useFlash = flashWanted())
                 builder.set(
                     CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
                     CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START
@@ -846,6 +851,7 @@ class CameraController(
                     CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
                     CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE
                 )
+                session.setRepeatingRequest(builder.build(), previewCallback, backgroundHandler)
             }
         } catch (e: Exception) {
             Log.e(TAG, "precapture error — shooting without it", e)
@@ -934,6 +940,28 @@ class CameraController(
         synchronized(stillLock) {
             stillState = StillState.IDLE
             pendingStillRequest = null
+        }
+        val session = captureSession
+        if (session != null && flashWanted() && supportsAlwaysFlash()) {
+            try {
+                synchronized(builderLock) {
+                    val builder = previewRequestBuilder
+                    if (builder != null) {
+                        configureBuilder(builder, useFlash = true)
+                        builder.set(
+                            CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                            CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_CANCEL
+                        )
+                        session.capture(builder.build(), previewCallback, backgroundHandler)
+                        builder.set(
+                            CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                            CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "precapture cancel error", e)
+            }
         }
         applySettings()
     }
