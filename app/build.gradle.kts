@@ -62,7 +62,7 @@ android {
         }
     }
 
-    // Lint warnings (e.g. deprecated Camera2 overloads) must never break a CI build
+    
     lint {
         abortOnError = false
         checkReleaseBuilds = false
