@@ -20,6 +20,7 @@
     <string name="cd_back">Back</string>
 
     <string name="menu_title">เมนู</string>
+    <string name="menu_section_camera">ตั้งค่ากล้อง</string>
     <string name="menu_raw_title">PRO_RAW</string>
     <string name="menu_raw_desc">บันทึกไฟล์ PRO_RAW เพิ่มจาก JPEG (เฉพาะเครื่องที่รองรับ RAW)</string>
 
