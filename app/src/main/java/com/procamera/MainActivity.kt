@@ -70,6 +70,7 @@ class MainActivity : ComponentActivity() {
     private var lastSettingTime = 0L
 
     private var permissionPromptShown = false
+    private var topInset = 0
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -155,10 +156,12 @@ class MainActivity : ComponentActivity() {
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
+            topInset = bars.top
             topBar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
                 topMargin = bars.top + (8 * density).toInt()
             }
-            bottomControls.updatePadding(bottom = bars.bottom + (24 * density).toInt())
+            bottomControls.updatePadding(bottom = bars.bottom + (16 * density).toInt())
+            adjustPreviewAspectRatio(cameraController.is16by9)
             insets
         }
         ViewCompat.requestApplyInsets(root)
@@ -398,21 +401,26 @@ class MainActivity : ComponentActivity() {
 
     private fun adjustPreviewAspectRatio(is16by9: Boolean) {
         viewFinder.post {
+            val density = resources.displayMetrics.density
             val root = findViewById<View>(R.id.root_layout)
             val availW = if (root.width > 0) root.width else resources.displayMetrics.widthPixels
             val availH = if (root.height > 0) root.height else resources.displayMetrics.heightPixels
 
+            val topOffset = if (is16by9) 0 else topInset + (64 * density).toInt()
+            val maxH = availH - topOffset
+
             var w = availW
             var h = if (is16by9) w * 16 / 9 else w * 4 / 3
-            if (h > availH) {
-                h = availH
+            if (h > maxH) {
+                h = maxH
                 w = if (is16by9) h * 9 / 16 else h * 3 / 4
             }
 
-            val lp = viewFinder.layoutParams
-            if (lp.width != w || lp.height != h) {
+            val lp = viewFinder.layoutParams as ViewGroup.MarginLayoutParams
+            if (lp.width != w || lp.height != h || lp.topMargin != topOffset) {
                 lp.width = w
                 lp.height = h
+                lp.topMargin = topOffset
                 viewFinder.layoutParams = lp
             }
         }
