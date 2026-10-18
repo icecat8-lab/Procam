@@ -22,7 +22,6 @@ target_compile_options(procamera PRIVATE
         -Wno-unused-variable
 )
 
-
 if("${ANDROID_ABI}" STREQUAL "armeabi-v7a")
     target_compile_options(procamera PRIVATE -mfpu=neon)
 endif()
