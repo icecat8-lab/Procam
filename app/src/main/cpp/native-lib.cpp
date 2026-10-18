@@ -12,21 +12,20 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 namespace {
-
 constexpr int kLutSize = 4096;
 
-n   if (i < 0) return -i;
+inline int mirror(int i, int n) {
+    if (i < 0) return -i;
     if (i >= n) return 2 * (n - 1) - i;
     return i;
 }
 
-
 void buildSiteTable(int cfa, int site[2][2]) {
     switch (cfa) {
-        case 1: site[0][0] = 1; site[0][1] = 0; site[1][0] = 2; site[1][1] = 1; break; // GRBG
-        case 2: site[0][0] = 1; site[0][1] = 2; site[1][0] = 0; site[1][1] = 1; break; // GBRG
-        case 3: site[0][0] = 2; site[0][1] = 1; site[1][0] = 1; site[1][1] = 0; break; // BGGR
-        default: site[0][0] = 0; site[0][1] = 1; site[1][0] = 1; site[1][1] = 2; break; // RGGB
+        case 1: site[0][0] = 1; site[0][1] = 0; site[1][0] = 2; site[1][1] = 1; break;
+        case 2: site[0][0] = 1; site[0][1] = 2; site[1][0] = 0; site[1][1] = 1; break;
+        case 3: site[0][0] = 2; site[0][1] = 1; site[1][0] = 1; site[1][1] = 0; break;
+        default: site[0][0] = 0; site[0][1] = 1; site[1][0] = 1; site[1][1] = 2; break;
     }
 }
 
@@ -34,13 +33,13 @@ struct Params {
     const uint8_t *raw;
     int width;
     int height;
-    int rowStride;      
+    int rowStride;
     float black;
-    float wr, wg, wb;   
-    float ccm[9];       
+    float wr, wg, wb;
+    float ccm[9];
     int site[2][2];
     uint8_t *dst;
-    int dstStride;      
+    int dstStride;
     const uint8_t *lut;
 };
 
@@ -69,19 +68,19 @@ void processRows(const Params &p, int yBegin, int yEnd) {
 
             float r, g, b;
             const int c = p.site[py][px];
-            if (c == 0) {                       
+            if (c == 0) {
                 r = S(rowC, x);
                 g = (S(rowC, xl) + S(rowC, xr) + S(rowU, x) + S(rowD, x)) * 0.25f;
                 b = (S(rowU, xl) + S(rowU, xr) + S(rowD, xl) + S(rowD, xr)) * 0.25f;
-            } else if (c == 2) {                
+            } else if (c == 2) {
                 b = S(rowC, x);
                 g = (S(rowC, xl) + S(rowC, xr) + S(rowU, x) + S(rowD, x)) * 0.25f;
                 r = (S(rowU, xl) + S(rowU, xr) + S(rowD, xl) + S(rowD, xr)) * 0.25f;
-            } else {                            
+            } else {
                 g = S(rowC, x);
                 const float horiz = (S(rowC, xl) + S(rowC, xr)) * 0.5f;
                 const float vert = (S(rowU, x) + S(rowD, x)) * 0.5f;
-                if (p.site[py][(x + 1) & 1] == 0) { 
+                if (p.site[py][(x + 1) & 1] == 0) {
                     r = horiz;
                     b = vert;
                 } else {
@@ -90,17 +89,14 @@ void processRows(const Params &p, int yBegin, int yEnd) {
                 }
             }
 
-            
             r = clamp01(r * p.wr);
             g = clamp01(g * p.wg);
             b = clamp01(b * p.wb);
 
-            
             const float nr = p.ccm[0] * r + p.ccm[1] * g + p.ccm[2] * b;
             const float ng = p.ccm[3] * r + p.ccm[4] * g + p.ccm[5] * b;
             const float nb = p.ccm[6] * r + p.ccm[7] * g + p.ccm[8] * b;
 
-            
             uint8_t *o = out + static_cast<size_t>(x) * 4;
             o[0] = p.lut[static_cast<int>(clamp01(nr) * (kLutSize - 1) + 0.5f)];
             o[1] = p.lut[static_cast<int>(clamp01(ng) * (kLutSize - 1) + 0.5f)];
@@ -109,14 +105,12 @@ void processRows(const Params &p, int yBegin, int yEnd) {
         }
     }
 }
-
-} // namespace
-
+}
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_procamera_ImageProcessor_processRawPro(
         JNIEnv *env,
-        jobject /* this */,
+        jobject ,
         jobject rawBuffer,
         jobject bitmap,
         jint width,
@@ -129,7 +123,6 @@ Java_com_procamera_ImageProcessor_processRawPro(
         jfloatArray ccmArray,
         jint cfaPattern,
         jint whiteLevel) {
-
     if (rawBuffer == nullptr || bitmap == nullptr || ccmArray == nullptr) {
         LOGE("null argument");
         return JNI_FALSE;
@@ -182,7 +175,6 @@ Java_com_procamera_ImageProcessor_processRawPro(
     env->GetFloatArrayRegion(ccmArray, 0, 9, p.ccm);
     buildSiteTable(cfaPattern, p.site);
 
-    
     std::vector<uint8_t> lut(kLutSize);
     for (int i = 0; i < kLutSize; i++) {
         const float v = static_cast<float>(i) / (kLutSize - 1);
@@ -218,11 +210,10 @@ Java_com_procamera_ImageProcessor_processRawPro(
                 started++;
             }
         } catch (...) {
-            
         }
         processRows(p, 0, std::min(height, chunk));
         for (auto &th : pool) th.join();
-        
+
         const int doneUntil = std::min(height, chunk * (started + 1));
         if (doneUntil < height) processRows(p, doneUntil, height);
     }
