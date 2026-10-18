@@ -1,5 +1,8 @@
 package com.procamera
 
+import android.graphics.Bitmap
+import java.nio.ByteBuffer
+
 class ImageProcessor {
     companion object {
         init {
@@ -8,8 +11,8 @@ class ImageProcessor {
     }
 
     external fun processRawPro(
-        rawData: ByteArray,
-        outputData: ByteArray,
+        rawBuffer: ByteBuffer,
+        bitmap: Bitmap,
         width: Int,
         height: Int,
         rowStride: Int,
@@ -20,5 +23,5 @@ class ImageProcessor {
         ccm: FloatArray,
         cfaPattern: Int,
         whiteLevel: Int
-    )
+    ): Boolean
 }
