@@ -3,6 +3,7 @@ package com.procamera
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -14,7 +15,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.util.DisplayMetrics
+import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
@@ -41,7 +42,6 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
-
     private lateinit var viewFinder: TextureView
     private lateinit var btnCapture: View
     private lateinit var btnRatio: TextView
@@ -62,17 +62,18 @@ class MainActivity : ComponentActivity() {
     private lateinit var btnEv: TextView
 
     private lateinit var cameraController: CameraController
-    // Use the androidx.activity viewModels() delegate (was deprecated ViewModelProvider call)
     private val viewModel: CameraViewModel by viewModels()
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val applySettingsRunnable = Runnable { cameraController.applySettings() }
     private var lastSettingTime = 0L
 
+    private var permissionPromptShown = false
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        if (permissions[Manifest.permission.CAMERA] == true) {
+    ) { _ ->
+        if (hasCameraPermission()) {
             startCameraIfReady()
         } else {
             Toast.makeText(this, R.string.toast_camera_permission_required, Toast.LENGTH_LONG).show()
@@ -83,7 +84,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Edge-to-edge (modern non-deprecated API — replaces systemUiVisibility flags)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
@@ -97,6 +97,8 @@ class MainActivity : ComponentActivity() {
 
         val touchHandler = TouchFocusHandler(this, viewFinder, focusRing, cameraController)
         viewFinder.setOnTouchListener(touchHandler)
+
+        viewFinder.surfaceTextureListener = surfaceTextureListener
 
         restoreSliderUI()
     }
@@ -125,7 +127,6 @@ class MainActivity : ComponentActivity() {
     private fun setupCameraController() {
         cameraController = CameraController(this, viewFinder)
         cameraController.onCameraStateUpdated = { focusDist, iso, speedNanos ->
-            // Already throttled in CameraController — safe to update UI here
             if (cameraController.isAfAuto) {
                 btnAf.text = String.format(Locale.US, "AF\n%.1f", focusDist)
             }
@@ -139,16 +140,10 @@ class MainActivity : ComponentActivity() {
 
         cameraController.onImageSaved = { uri ->
             viewModel.latestImageUri = uri
-            // FIX: decode a small downscaled thumbnail instead of the full-res image
-            // (setImageURI on a 12–50 MP JPEG could allocate 50–200 MB for a 48dp view)
             loadThumbnailInto(uri)
         }
     }
 
-    /**
-     * FIX: top/bottom spacing now follows real WindowInsets (status bar, nav bar,
-     * display cutout) instead of a hardcoded 28dp margin that overlapped cutouts.
-     */
     private fun applyWindowInsets() {
         val root = findViewById<View>(R.id.root_layout)
         val topBar = findViewById<View>(R.id.top_bar)
@@ -164,12 +159,13 @@ class MainActivity : ComponentActivity() {
             bottomControls.updatePadding(bottom = bars.bottom + (24 * density).toInt())
             insets
         }
+        ViewCompat.requestApplyInsets(root)
     }
 
     private fun setupListeners() {
         btnRatio.setOnClickListener {
             val newIs16by9 = !cameraController.is16by9
-            btnRatio.text = if (newIs16by9) "16:9" else "4:3"
+            btnRatio.text = if (newIs16by9) getString(R.string.ratio_16_9) else getString(R.string.ratio_4_3)
             adjustPreviewAspectRatio(newIs16by9)
             cameraController.switchRatio(newIs16by9)
         }
@@ -179,14 +175,12 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, R.string.toast_flash_not_available, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            cameraController.isFlashOn = !cameraController.isFlashOn
-            btnFlash.setImageResource(
-                if (cameraController.isFlashOn) R.drawable.ic_flash_on else R.drawable.ic_flash_off
-            )
-            // iOS-style pop animation
-            btnFlash.startAnimation(
-                AnimationUtils.loadAnimation(this, android.R.anim.fade_in)
-            )
+            val on = !cameraController.isFlashOn
+            cameraController.isFlashOn = on
+            btnFlash.setImageResource(if (on) R.drawable.ic_flash_on else R.drawable.ic_flash_off)
+
+            btnFlash.imageTintList = ColorStateList.valueOf(if (on) accentColor() else Color.WHITE)
+            btnFlash.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_in))
         }
 
         btnAutoToggle.setOnClickListener {
@@ -200,16 +194,14 @@ class MainActivity : ComponentActivity() {
         }
 
         btnCapture.setOnClickListener {
-            val rotation = currentRotation()
-            cameraController.takePicture(rotation)
+            cameraController.takePicture(currentRotation())
 
-            // iOS-style shutter animation: quick fade-out + scale-down + back
             viewFinder.alpha = 0.4f
             mainHandler.postDelayed({ viewFinder.alpha = 1.0f }, 80)
         }
 
         btnAf.setOnClickListener {
-            if (cameraController.maxFocus <= 0f) {
+            if (cameraController.maxFocus <= 0f || !cameraController.isManualSupported) {
                 toastManualUnsupported()
             } else toggleSlider("AF", viewModel.afProgress)
         }
@@ -228,7 +220,9 @@ class MainActivity : ComponentActivity() {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) updateSliderUI(progress, fromUser = true)
             }
+
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 cameraController.applySettings()
             }
@@ -297,11 +291,10 @@ class MainActivity : ComponentActivity() {
         }
 
         if (fromUser) {
-            // Throttle applySettings — was firing on every progress tick
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastSettingTime > 60) {
+            val now = System.currentTimeMillis()
+            if (now - lastSettingTime > 60) {
                 cameraController.applySettings()
-                lastSettingTime = currentTime
+                lastSettingTime = now
             } else {
                 viewFinder.removeCallbacks(applySettingsRunnable)
                 viewFinder.postDelayed(applySettingsRunnable, 60)
@@ -311,16 +304,17 @@ class MainActivity : ComponentActivity() {
 
     private fun toggleSlider(mode: String, currentProgress: Int) {
         if (viewModel.activeMode == mode) {
-            // Close slider with animation
-            sliderPanel.animate().alpha(0f).setDuration(120).withEndAction {
-                sliderPanel.visibility = View.GONE
-            }
             viewModel.activeMode = "NONE"
             resetButtonColors()
+            sliderPanel.animate().cancel()
+            sliderPanel.animate().alpha(0f).setDuration(120).withEndAction {
+                if (viewModel.activeMode == "NONE") sliderPanel.visibility = View.GONE
+            }.start()
             return
         }
 
         viewModel.activeMode = mode
+        sliderPanel.animate().cancel()
         sliderPanel.visibility = View.VISIBLE
         sliderPanel.alpha = 0f
         sliderPanel.animate().alpha(1f).setDuration(180).start()
@@ -354,6 +348,40 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun syncControllerFromViewModel() {
+        val c = cameraController
+
+        val af = viewModel.afProgress
+        c.isAfAuto = af == 0
+        if (af != 0) {
+            val focus = c.calculateFocus(af)
+            c.currentFocusDistance = focus
+            btnAf.text = String.format(Locale.US, "AF\n%.1f", focus)
+        }
+
+        val iso = viewModel.isoProgress
+        c.isIsoAuto = iso == 0
+        if (iso != 0) {
+            c.currentIso = c.calculateIso(iso)
+            btnIso.text = "ISO\n${c.currentIso}"
+        }
+
+        val s = viewModel.sProgress
+        c.isSpeedAuto = s == 0
+        if (s != 0) {
+            c.currentExposureTime = c.calculateSpeed(s)
+            btnS.text = "S\n${formatShutterText(c.currentExposureTime)}"
+        }
+
+        val wb = viewModel.wbProgress
+        c.currentWb = c.getWbMode(wb)
+        if (wb != 0) btnWb.text = "WB\n${c.getWbLabel(c.currentWb)}"
+
+        val ev = viewModel.evProgress
+        c.currentEv = c.calculateEv(ev)
+        if (ev != 50) btnEv.text = "EV\n${c.getEvLabel(ev)}"
+    }
+
     private fun resetButtonColors() {
         btnAf.setTextColor(Color.WHITE)
         btnIso.setTextColor(Color.WHITE)
@@ -362,23 +390,30 @@ class MainActivity : ComponentActivity() {
         btnEv.setTextColor(Color.WHITE)
     }
 
-    /**
-     * FIX: aspect ratio formula was inverted (16:9 produced a height taller than 4:3).
-     * For a 16:9 layout:  width:height = 16:9  →  height = width * 9 / 16
-     * For a 4:3  layout:  width:height = 4:3   →  height = width * 3 / 4
-     */
     private fun adjustPreviewAspectRatio(is16by9: Boolean) {
         viewFinder.post {
-            val displayMetrics: DisplayMetrics = resources.displayMetrics
-            val screenWidth = displayMetrics.widthPixels
-            val layoutParams = viewFinder.layoutParams
-            layoutParams.width = screenWidth
-            layoutParams.height = if (is16by9) (screenWidth * 9) / 16 else (screenWidth * 3) / 4
-            viewFinder.layoutParams = layoutParams
+            val root = findViewById<View>(R.id.root_layout)
+            val availW = if (root.width > 0) root.width else resources.displayMetrics.widthPixels
+            val availH = if (root.height > 0) root.height else resources.displayMetrics.heightPixels
+
+            var w = availW
+            var h = if (is16by9) w * 16 / 9 else w * 4 / 3
+            if (h > availH) {
+                h = availH
+                w = if (is16by9) h * 9 / 16 else h * 3 / 4
+            }
+
+            val lp = viewFinder.layoutParams
+            if (lp.width != w || lp.height != h) {
+                lp.width = w
+                lp.height = h
+                viewFinder.layoutParams = lp
+            }
         }
     }
 
     private fun formatShutterText(nanos: Long): String {
+        if (nanos <= 0L) return "--"
         val sec = nanos / 1_000_000_000.0
         return if (sec >= 0.5) String.format(Locale.US, "%.1fs", sec)
         else "1/${(1.0 / sec).toInt()}"
@@ -396,13 +431,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * FIX: was using deprecated windowManager.defaultDisplay.rotation on API 30+.
-     * On Android 11+, prefer Context.getDisplay().rotation.
-     */
     private fun currentRotation(): Int {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            this.display?.rotation ?: android.view.Surface.ROTATION_0
+            this.display?.rotation ?: Surface.ROTATION_0
         } else {
             @Suppress("DEPRECATION")
             windowManager.defaultDisplay.rotation
@@ -415,9 +446,8 @@ class MainActivity : ComponentActivity() {
         if (viewFinder.isAvailable) {
             adjustPreviewAspectRatio(cameraController.is16by9)
             checkPermissionsAndStart()
-        } else {
-            viewFinder.surfaceTextureListener = surfaceTextureListener
         }
+
         viewModel.latestImageUri?.let { loadThumbnailInto(it) }
     }
 
@@ -429,24 +459,40 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
+        cameraController.release()
         super.onDestroy()
     }
 
+    private fun hasCameraPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun missingPermissions(): List<String> {
+        val wanted = mutableListOf(Manifest.permission.CAMERA)
+
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            wanted.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        return wanted.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+    }
+
     private fun checkPermissionsAndStart() {
-        val permissions = listOf(Manifest.permission.CAMERA)
-        if (permissions.all {
-                ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
-            }) {
-            startCameraIfReady()
-        } else {
-            requestPermissionLauncher.launch(permissions.toTypedArray())
+        if (hasCameraPermission()) startCameraIfReady()
+
+        val missing = missingPermissions()
+        if (missing.isNotEmpty() && !permissionPromptShown) {
+            permissionPromptShown = true
+            requestPermissionLauncher.launch(missing.toTypedArray())
         }
     }
 
     private fun startCameraIfReady() {
-        if (viewFinder.isAvailable) {
+        if (viewFinder.isAvailable && hasCameraPermission()) {
             adjustPreviewAspectRatio(cameraController.is16by9)
             cameraController.openCamera()
+            syncControllerFromViewModel()
         }
     }
 
@@ -455,24 +501,22 @@ class MainActivity : ComponentActivity() {
             adjustPreviewAspectRatio(cameraController.is16by9)
             checkPermissionsAndStart()
         }
-        override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
+
+        override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+            cameraController.reapplyPreviewBufferSize()
+        }
+
         override fun onSurfaceTextureDestroyed(surface: SurfaceTexture) = true
+
         override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
     }
 
-    /** iOS-style accent (system yellow) */
     private fun accentColor(): Int = Color.parseColor("#FFD60A")
 
-    /** Toast shown when the device lacks manual controls capability. */
     private fun toastManualUnsupported() {
         Toast.makeText(this, R.string.toast_manual_not_supported, Toast.LENGTH_SHORT).show()
     }
 
-    /**
-     * FIX: was checkThumbnailExists() → setImageURI() which decoded the FULL-resolution
-     * image (12–50 MP = 50–200 MB bitmap) into a 48dp thumbnail → OOM/jank risk.
-     * Now validates existence and decodes a small, EXIF-corrected bitmap off the main thread.
-     */
     private fun loadThumbnailInto(uri: Uri) {
         lifecycleScope.launch {
             val bitmap = withContext(Dispatchers.IO) {
@@ -491,7 +535,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Decode a downscaled, EXIF-rotated square thumbnail for [uri]. */
     private fun decodeThumbnail(uri: Uri, targetSize: Int): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         contentResolver.openInputStream(uri)?.use {
