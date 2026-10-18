@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var btnCapture: View
     private lateinit var btnRatio: TextView
     private lateinit var btnFlash: ImageView
+    private lateinit var btnMenu: ImageView
     private lateinit var thumbnailView: ImageView
     private lateinit var focusRing: View
     private lateinit var focusEvText: TextView
@@ -108,6 +109,7 @@ class MainActivity : ComponentActivity() {
         btnCapture = findViewById(R.id.btn_capture)
         btnRatio = findViewById(R.id.btn_ratio)
         btnFlash = findViewById(R.id.btn_flash)
+        btnMenu = findViewById(R.id.btn_menu)
         thumbnailView = findViewById(R.id.thumbnail_view)
         focusRing = findViewById(R.id.focus_ring)
         focusEvText = findViewById(R.id.focus_ev_text)
@@ -181,6 +183,10 @@ class MainActivity : ComponentActivity() {
 
             btnFlash.imageTintList = ColorStateList.valueOf(if (on) accentColor() else Color.WHITE)
             btnFlash.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_in))
+        }
+
+        btnMenu.setOnClickListener {
+            startActivity(Intent(this, MenuActivity::class.java))
         }
 
         btnAutoToggle.setOnClickListener {
@@ -442,6 +448,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        cameraController.rawEnabled = AppSettings.isRawEnabled(this)
         cameraController.startBackgroundThread()
         if (viewFinder.isAvailable) {
             adjustPreviewAspectRatio(cameraController.is16by9)
