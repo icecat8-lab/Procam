@@ -5,28 +5,24 @@
     android:layout_height="match_parent"
     android:background="@color/black_pure">
 
-    <!-- ============== VIEWFINDER ============== -->
     <TextureView
         android:id="@+id/view_finder"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_centerInParent="true" />
 
-    <!-- Top gradient overlay (under top bar) -->
     <View
         android:layout_width="match_parent"
         android:layout_height="120dp"
         android:layout_alignParentTop="true"
         android:background="@drawable/bg_top_gradient" />
 
-    <!-- Bottom gradient overlay (above bottom controls) -->
     <View
         android:layout_width="match_parent"
         android:layout_height="280dp"
         android:layout_alignParentBottom="true"
         android:background="@drawable/bg_bottom_gradient" />
 
-    <!-- ============== FOCUS RING ============== -->
     <RelativeLayout
         android:id="@+id/focus_ring"
         android:layout_width="92dp"
@@ -35,7 +31,6 @@
         android:background="@drawable/focus_frame"
         android:visibility="gone">
 
-        <!-- EV pill attached to ring -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -43,8 +38,10 @@
             android:layout_alignParentBottom="true"
             android:layout_marginBottom="-22dp"
             android:background="@drawable/bg_auto_pill"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="3dp">
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp">
 
             <TextView
                 android:id="@+id/focus_ev_text"
@@ -57,8 +54,6 @@
         </LinearLayout>
     </RelativeLayout>
 
-    <!-- ============== TOP BAR ============== -->
-    <!-- FIX: marginTop moved from hardcoded 28dp to real WindowInsets (status bar / cutout safe) -->
     <LinearLayout
         android:id="@+id/top_bar"
         android:layout_width="match_parent"
@@ -67,50 +62,38 @@
         android:layout_marginTop="0dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="20dp">
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp">
 
-        <!-- Flash -->
-        <FrameLayout
+        <ImageView
+            android:id="@+id/btn_flash"
             android:layout_width="44dp"
             android:layout_height="44dp"
-            android:background="@drawable/bg_circle_button">
+            android:padding="10dp"
+            android:background="@drawable/bg_circle_button"
+            android:contentDescription="@string/cd_flash"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_flash_off"
+            android:tint="@android:color/white" />
 
-            <ImageView
-                android:id="@+id/btn_flash"
-                android:layout_width="26dp"
-                android:layout_height="26dp"
-                android:layout_gravity="center"
-                android:src="@drawable/ic_flash_off"
-                android:background="@android:color/transparent"
-                android:contentDescription="@string/cd_flash"
-                android:tint="@android:color/white" />
-        </FrameLayout>
-
-        <!-- Spacer -->
         <View
             android:layout_width="0dp"
             android:layout_height="1dp"
             android:layout_weight="1" />
 
-        <!-- Ratio -->
-        <FrameLayout
+        <TextView
+            android:id="@+id/btn_ratio"
+            style="@style/TopBarText"
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:background="@drawable/bg_circle_button"
-            android:paddingHorizontal="14dp">
-
-            <TextView
-                android:id="@+id/btn_ratio"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:text="@string/ratio_4_3"
-                style="@style/TopBarText" />
-        </FrameLayout>
+            android:layout_height="40dp"
+            android:minWidth="60dp"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:background="@drawable/bg_pill_button"
+            android:text="@string/ratio_4_3" />
     </LinearLayout>
 
-    <!-- ============== BOTTOM CONTROLS ============== -->
-    <!-- FIX: paddingBottom now applied from real WindowInsets (navigation bar safe) -->
     <LinearLayout
         android:id="@+id/bottom_controls"
         android:layout_width="match_parent"
@@ -120,30 +103,29 @@
         android:paddingBottom="0dp"
         android:paddingTop="8dp">
 
-        <!-- Slider panel (iOS frosted card) -->
         <LinearLayout
             android:id="@+id/slider_panel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:gravity="center"
-            android:layout_marginHorizontal="20dp"
-            android:paddingHorizontal="20dp"
+            android:layout_marginStart="20dp"
+            android:layout_marginEnd="20dp"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
             android:paddingTop="14dp"
             android:paddingBottom="12dp"
             android:background="@drawable/bg_panel"
             android:visibility="gone">
 
-            <!-- Current value title -->
             <TextView
                 android:id="@+id/slider_value_title"
+                style="@style/SliderTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="ISO 100"
-                style="@style/SliderTitle"
-                android:paddingBottom="6dp" />
+                android:paddingBottom="6dp"
+                android:text="ISO 100" />
 
-            <!-- SeekBar -->
             <SeekBar
                 android:id="@+id/setting_seekbar"
                 android:layout_width="match_parent"
@@ -155,82 +137,83 @@
                 android:thumbTint="@color/accent_yellow"
                 android:progressBackgroundTint="@color/white_20"
                 android:background="@android:color/transparent"
-                android:paddingHorizontal="8dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
                 android:minHeight="32dp"
                 android:splitTrack="false" />
 
-            <!-- Auto toggle pill -->
             <TextView
                 android:id="@+id/btn_auto_toggle"
+                style="@style/AutoToggleText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_auto_pill"
-                android:paddingHorizontal="16dp"
-                android:paddingVertical="6dp"
-                android:text="@string/mode_auto"
-                style="@style/AutoToggleText" />
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:text="@string/mode_auto" />
         </LinearLayout>
 
-        <!-- Mode buttons row -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center"
-            android:paddingHorizontal="8dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
             android:paddingBottom="20dp"
             android:paddingTop="14dp">
 
             <TextView
                 android:id="@+id/btn_af"
+                style="@style/ModeButtonText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="AF\nAUTO"
-                style="@style/ModeButtonText" />
+                android:text="AF\nAUTO" />
 
             <TextView
                 android:id="@+id/btn_iso"
+                style="@style/ModeButtonText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="ISO\nAUTO"
-                style="@style/ModeButtonText" />
+                android:text="ISO\nAUTO" />
 
             <TextView
                 android:id="@+id/btn_wb"
+                style="@style/ModeButtonText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="WB\nAUTO"
-                style="@style/ModeButtonText" />
+                android:text="WB\nAUTO" />
 
             <TextView
                 android:id="@+id/btn_s"
+                style="@style/ModeButtonText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="S\nAUTO"
-                style="@style/ModeButtonText" />
+                android:text="S\nAUTO" />
 
             <TextView
                 android:id="@+id/btn_ev"
+                style="@style/ModeButtonText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="EV\n0.0"
-                style="@style/ModeButtonText" />
+                android:text="EV\n0.0" />
         </LinearLayout>
 
-        <!-- Shutter row: thumbnail | shutter button -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingHorizontal="32dp"
+            android:paddingStart="32dp"
+            android:paddingEnd="32dp"
             android:paddingTop="4dp">
 
-            <!-- Thumbnail (left) -->
             <ImageView
                 android:id="@+id/thumbnail_view"
                 android:layout_width="48dp"
@@ -239,9 +222,9 @@
                 android:layout_alignParentStart="true"
                 android:scaleType="centerCrop"
                 android:background="@drawable/bg_thumbnail"
+                android:clipToOutline="true"
                 android:contentDescription="@string/cd_thumbnail" />
 
-            <!-- Shutter button (center) -->
             <View
                 android:id="@+id/btn_capture"
                 android:layout_width="76dp"
@@ -250,7 +233,6 @@
                 android:background="@drawable/shutter_button"
                 android:contentDescription="@string/cd_shutter" />
 
-            <!-- Spacer right (kept for symmetry) -->
             <View
                 android:layout_width="48dp"
                 android:layout_height="48dp"
