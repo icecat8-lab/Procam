@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- API 27+: light navigation bar flag (moved out of base values to satisfy lintVitalRelease) -->
 <resources>
-    <style name="Theme.ProCamera" parent="Theme.MaterialComponents.NoActionBar">
+    <style name="Theme.ProCamera" parent="Base.Theme.ProCamera">
         <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>
