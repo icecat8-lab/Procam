@@ -1,6 +1,7 @@
 package com.procamera
 
 import android.Manifest
+import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -15,6 +16,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
@@ -77,6 +79,7 @@ class MainActivity : ComponentActivity() {
     ) { _ ->
         if (hasCameraPermission()) {
             startCameraIfReady()
+            refreshThumbnail()
         } else {
             Toast.makeText(this, R.string.toast_camera_permission_required, Toast.LENGTH_LONG).show()
             finish()
@@ -199,7 +202,8 @@ class MainActivity : ComponentActivity() {
         }
 
         thumbnailView.setOnClickListener {
-            viewModel.latestImageUri?.let { uri -> openGallery(uri) }
+            val uri = viewModel.latestImageUri
+            if (uri != null) openGallery(uri) else openGalleryApp()
         }
 
         btnCapture.setOnClickListener {
@@ -433,6 +437,56 @@ class MainActivity : ComponentActivity() {
         else "1/${(1.0 / sec).toInt()}"
     }
 
+    private fun refreshThumbnail() {
+        lifecycleScope.launch {
+            val uri = viewModel.latestImageUri ?: withContext(Dispatchers.IO) {
+                try {
+                    queryLatestImage()
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (uri != null) {
+                viewModel.latestImageUri = uri
+                loadThumbnailInto(uri)
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun queryLatestImage(): Uri? {
+        val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val selection: String
+        val args: Array<String>
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            selection = "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+            args = arrayOf("Pictures/ProCamera%")
+        } else {
+            selection = "${MediaStore.Images.Media.DATA} LIKE ?"
+            args = arrayOf("%/Pictures/ProCamera/%")
+        }
+        contentResolver.query(
+            collection,
+            arrayOf(MediaStore.Images.Media._ID),
+            selection,
+            args,
+            "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                return ContentUris.withAppendedId(collection, cursor.getLong(0))
+            }
+        }
+        return null
+    }
+
+    private fun openGalleryApp() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
+        } catch (e: Exception) {
+            Toast.makeText(this, R.string.toast_no_viewer_app, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun openGallery(uri: Uri) {
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "image/*")
@@ -463,7 +517,7 @@ class MainActivity : ComponentActivity() {
             checkPermissionsAndStart()
         }
 
-        viewModel.latestImageUri?.let { loadThumbnailInto(it) }
+        refreshThumbnail()
     }
 
     override fun onPause() {
@@ -487,6 +541,7 @@ class MainActivity : ComponentActivity() {
 
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
             wanted.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            wanted.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
         return wanted.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
