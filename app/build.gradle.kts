@@ -1,4 +1,4 @@
-plugins {
+availability{
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
@@ -6,7 +6,7 @@ plugins {
 android {
     namespace = "com.procamera"
     compileSdk = 34
-    ndkVersion = "25.2.9519653" // LTS NDK
+    ndkVersion = "25.2.9519653"
 
     defaultConfig {
         applicationId = "com.procamera"
@@ -15,7 +15,7 @@ android {
         versionCode = 3
         versionName = "2.2"
 
-        // Limit ABIs to reduce APK size and ensure NEON availability
+       
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
