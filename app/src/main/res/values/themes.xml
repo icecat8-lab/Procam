@@ -1,11 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- iOS-style edge-to-edge dark theme -->
-    <!-- FIX: windowLightNavigationBar (API 27) and windowLayoutInDisplayCutoutMode (API 28)
-         were in base values with minSdk 24 → lintVitalRelease failure.
-         They are now split into values-v27 and values-v28. -->
-    <style name="Theme.ProCamera" parent="Theme.MaterialComponents.NoActionBar">
+    <style name="Base.Theme.ProCamera" parent="Theme.MaterialComponents.NoActionBar">
         <item name="android:windowBackground">@color/black_pure</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
@@ -13,11 +9,11 @@
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:windowTranslucentStatus">false</item>
         <item name="android:windowTranslucentNavigation">false</item>
-        <item name="android:windowContentTransitions">true</item>
         <item name="android:windowFullscreen">false</item>
     </style>
 
-    <!-- Mode button (AF/ISO/WB/S/EV) text appearance -->
+    <style name="Theme.ProCamera" parent="Base.Theme.ProCamera" />
+
     <style name="ModeButtonText">
         <item name="android:textColor">@android:color/white</item>
         <item name="android:textSize">12sp</item>
@@ -28,7 +24,6 @@
         <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
-    <!-- Top-bar small button label -->
     <style name="TopBarText">
         <item name="android:textColor">@android:color/white</item>
         <item name="android:textSize">14sp</item>
@@ -37,7 +32,6 @@
         <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
-    <!-- Slider title -->
     <style name="SliderTitle">
         <item name="android:textColor">@color/accent_yellow</item>
         <item name="android:textSize">13sp</item>
@@ -46,7 +40,6 @@
         <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 
-    <!-- Auto toggle pill -->
     <style name="AutoToggleText">
         <item name="android:textColor">@color/accent_yellow</item>
         <item name="android:textSize">12sp</item>
