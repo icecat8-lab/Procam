@@ -1,15 +1,124 @@
 #include <jni.h>
 #include <android/bitmap.h>
+#include <android/log.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <thread>
+#include <vector>
 
-extern "C" JNIEXPORT void JNICALL
+#define LOG_TAG "ProCameraNative"
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+namespace {
+
+constexpr int kLutSize = 4096;
+
+n   if (i < 0) return -i;
+    if (i >= n) return 2 * (n - 1) - i;
+    return i;
+}
+
+
+void buildSiteTable(int cfa, int site[2][2]) {
+    switch (cfa) {
+        case 1: site[0][0] = 1; site[0][1] = 0; site[1][0] = 2; site[1][1] = 1; break; // GRBG
+        case 2: site[0][0] = 1; site[0][1] = 2; site[1][0] = 0; site[1][1] = 1; break; // GBRG
+        case 3: site[0][0] = 2; site[0][1] = 1; site[1][0] = 1; site[1][1] = 0; break; // BGGR
+        default: site[0][0] = 0; site[0][1] = 1; site[1][0] = 1; site[1][1] = 2; break; // RGGB
+    }
+}
+
+struct Params {
+    const uint8_t *raw;
+    int width;
+    int height;
+    int rowStride;      
+    float black;
+    float wr, wg, wb;   
+    float ccm[9];       
+    int site[2][2];
+    uint8_t *dst;
+    int dstStride;      
+    const uint8_t *lut;
+};
+
+inline float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
+
+void processRows(const Params &p, int yBegin, int yEnd) {
+    const int w = p.width;
+    const int h = p.height;
+
+    for (int y = yBegin; y < yEnd; y++) {
+        const uint16_t *rowC = reinterpret_cast<const uint16_t *>(p.raw + static_cast<size_t>(y) * p.rowStride);
+        const uint16_t *rowU = reinterpret_cast<const uint16_t *>(p.raw + static_cast<size_t>(mirror(y - 1, h)) * p.rowStride);
+        const uint16_t *rowD = reinterpret_cast<const uint16_t *>(p.raw + static_cast<size_t>(mirror(y + 1, h)) * p.rowStride);
+        uint8_t *out = p.dst + static_cast<size_t>(y) * p.dstStride;
+        const int py = y & 1;
+
+        for (int x = 0; x < w; x++) {
+            const int xl = mirror(x - 1, w);
+            const int xr = mirror(x + 1, w);
+            const int px = x & 1;
+
+            auto S = [&](const uint16_t *row, int xx) -> float {
+                float v = static_cast<float>(row[xx]) - p.black;
+                return v > 0.0f ? v : 0.0f;
+            };
+
+            float r, g, b;
+            const int c = p.site[py][px];
+            if (c == 0) {                       
+                r = S(rowC, x);
+                g = (S(rowC, xl) + S(rowC, xr) + S(rowU, x) + S(rowD, x)) * 0.25f;
+                b = (S(rowU, xl) + S(rowU, xr) + S(rowD, xl) + S(rowD, xr)) * 0.25f;
+            } else if (c == 2) {                
+                b = S(rowC, x);
+                g = (S(rowC, xl) + S(rowC, xr) + S(rowU, x) + S(rowD, x)) * 0.25f;
+                r = (S(rowU, xl) + S(rowU, xr) + S(rowD, xl) + S(rowD, xr)) * 0.25f;
+            } else {                            
+                g = S(rowC, x);
+                const float horiz = (S(rowC, xl) + S(rowC, xr)) * 0.5f;
+                const float vert = (S(rowU, x) + S(rowD, x)) * 0.5f;
+                if (p.site[py][(x + 1) & 1] == 0) { 
+                    r = horiz;
+                    b = vert;
+                } else {
+                    b = horiz;
+                    r = vert;
+                }
+            }
+
+            
+            r = clamp01(r * p.wr);
+            g = clamp01(g * p.wg);
+            b = clamp01(b * p.wb);
+
+            
+            const float nr = p.ccm[0] * r + p.ccm[1] * g + p.ccm[2] * b;
+            const float ng = p.ccm[3] * r + p.ccm[4] * g + p.ccm[5] * b;
+            const float nb = p.ccm[6] * r + p.ccm[7] * g + p.ccm[8] * b;
+
+            
+            uint8_t *o = out + static_cast<size_t>(x) * 4;
+            o[0] = p.lut[static_cast<int>(clamp01(nr) * (kLutSize - 1) + 0.5f)];
+            o[1] = p.lut[static_cast<int>(clamp01(ng) * (kLutSize - 1) + 0.5f)];
+            o[2] = p.lut[static_cast<int>(clamp01(nb) * (kLutSize - 1) + 0.5f)];
+            o[3] = 255;
+        }
+    }
+}
+
+} // namespace
+
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_com_procamera_ImageProcessor_processRawPro(
         JNIEnv *env,
         jobject /* this */,
-        jbyteArray rawData,
-        jbyteArray outputData,
+        jobject rawBuffer,
+        jobject bitmap,
         jint width,
         jint height,
         jint rowStride,
@@ -21,153 +130,103 @@ Java_com_procamera_ImageProcessor_processRawPro(
         jint cfaPattern,
         jint whiteLevel) {
 
-    // Get buffers; use JNI_ABORT for read-only inputs so the JVM doesn't copy back
-    jbyte *rawBytes = env->GetByteArrayElements(rawData, nullptr);
-    jbyte *outputBytes = env->GetByteArrayElements(outputData, nullptr);
-    jfloat *ccm = env->GetFloatArrayElements(ccmArray, nullptr);
-
-    if (!rawBytes || !outputBytes || !ccm) {
-        if (rawBytes) env->ReleaseByteArrayElements(rawData, rawBytes, JNI_ABORT);
-        if (outputBytes) env->ReleaseByteArrayElements(outputData, outputBytes, JNI_ABORT);
-        if (ccm) env->ReleaseFloatArrayElements(ccmArray, ccm, JNI_ABORT);
-        return;
+    if (rawBuffer == nullptr || bitmap == nullptr || ccmArray == nullptr) {
+        LOGE("null argument");
+        return JNI_FALSE;
+    }
+    if (width < 2 || height < 2 || rowStride < width * 2) {
+        LOGE("bad dimensions %dx%d stride=%d", width, height, rowStride);
+        return JNI_FALSE;
+    }
+    if (env->GetArrayLength(ccmArray) < 9) {
+        LOGE("ccm needs 9 floats");
+        return JNI_FALSE;
     }
 
-    uint16_t *raw16 = reinterpret_cast<uint16_t *>(rawBytes);
-    uint32_t *outPixels = reinterpret_cast<uint32_t *>(outputBytes);
-
-    int stridePixels = rowStride / 2; // raw16 is uint16
-
-    // Sanity check bounds: raw buffer must hold at least stridePixels * height pixels
-    jsize rawLen = env->GetArrayLength(rawData);
-    if (rawLen < stridePixels * height * 2) {
-        env->ReleaseFloatArrayElements(ccmArray, ccm, JNI_ABORT);
-        env->ReleaseByteArrayElements(rawData, rawBytes, JNI_ABORT);
-        env->ReleaseByteArrayElements(outputData, outputBytes, JNI_ABORT);
-        return;
+    const uint8_t *raw = static_cast<const uint8_t *>(env->GetDirectBufferAddress(rawBuffer));
+    const jlong capacity = env->GetDirectBufferCapacity(rawBuffer);
+    if (raw == nullptr || capacity < 0) {
+        LOGE("raw buffer is not a direct ByteBuffer");
+        return JNI_FALSE;
+    }
+    const int64_t needed = static_cast<int64_t>(height - 1) * rowStride + static_cast<int64_t>(width) * 2;
+    if (capacity < needed) {
+        LOGE("raw buffer too small: %lld < %lld", (long long) capacity, (long long) needed);
+        return JNI_FALSE;
     }
 
-    // Helper to read raw pixel safely
-    auto getRaw = [&](int x, int y) -> float {
-        if (x < 0 || y < 0 || x >= width || y >= height) return 0.0f;
-        int idx = y * stridePixels + x;
-        return std::max(0.0f, static_cast<float>(raw16[idx]) - blackLevel);
-    };
+    AndroidBitmapInfo info;
+    if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        LOGE("AndroidBitmap_getInfo failed");
+        return JNI_FALSE;
+    }
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888 ||
+        info.width < static_cast<uint32_t>(width) || info.height < static_cast<uint32_t>(height)) {
+        LOGE("bitmap mismatch: format=%d %ux%u", info.format, info.width, info.height);
+        return JNI_FALSE;
+    }
 
-    // Helper for clipping after gamma
-    auto clamp8 = [](float v) -> uint8_t {
-        if (v < 0.0f) return 0;
-        if (v > 255.0f) return 255;
-        return static_cast<uint8_t>(v);
-    };
+    Params p;
+    p.raw = raw;
+    p.width = width;
+    p.height = height;
+    p.rowStride = rowStride;
+    p.black = blackLevel;
 
-    // Precompute clamped white-balance gains (avoid div-by-zero)
-    float rg = (rGain > 0.001f) ? rGain : 1.0f;
-    float gg = (gGain > 0.001f) ? gGain : 1.0f;
-    float bg = (bGain > 0.001f) ? bGain : 1.0f;
+    const float range = static_cast<float>(whiteLevel) - blackLevel;
+    const float norm = range > 1.0f ? 1.0f / range : 1.0f / 1023.0f;
+    p.wr = (rGain > 0.001f ? rGain : 1.0f) * norm;
+    p.wg = (gGain > 0.001f ? gGain : 1.0f) * norm;
+    p.wb = (bGain > 0.001f ? bGain : 1.0f) * norm;
 
-    // FIX: Bayer pattern was hardcoded RGGB — sensors with GRBG/GBRG/BGGR produced
-    // green/magenta-tinted images. Now supports all 4 arrangements from
-    // CameraCharacteristics.SENSOR_INFO_COLOR_FILTER_ARRANGEMENT.
-    // Returns 0 = R, 1 = G, 2 = B for the given Bayer site.
-    auto colorAt = [&](int x, int y) -> int {
-        int px = ((x % 2) + 2) % 2;
-        int py = ((y % 2) + 2) % 2;
-        switch (cfaPattern) {
-            case 1: // GRBG: row0 G R G R / row1 B G B G
-                return (py == 0) ? (px == 1 ? 0 : 1) : (px == 0 ? 2 : 1);
-            case 2: // GBRG: row0 G B G B / row1 R G R G
-                return (py == 0) ? (px == 1 ? 2 : 1) : (px == 0 ? 0 : 1);
-            case 3: // BGGR: (0,0)=B (1,1)=R
-                return (px == 0 && py == 0) ? 2 : (px == 1 && py == 1 ? 0 : 1);
-            default: // 0 = RGGB: row0 R G R G / row1 G B G B
-                return (px == 0 && py == 0) ? 0 : (px == 1 && py == 1 ? 2 : 1);
-        }
-    };
+    env->GetFloatArrayRegion(ccmArray, 0, 9, p.ccm);
+    buildSiteTable(cfaPattern, p.site);
 
-    auto isRedAt = [&](int x, int y) { return colorAt(x, y) == 0; };
-    auto isBlueAt = [&](int x, int y) { return colorAt(x, y) == 2; };
-    // green elsewhere
+    
+    std::vector<uint8_t> lut(kLutSize);
+    for (int i = 0; i < kLutSize; i++) {
+        const float v = static_cast<float>(i) / (kLutSize - 1);
+        const float s = (v <= 0.0031308f) ? v * 12.92f : 1.055f * std::pow(v, 1.0f / 2.4f) - 0.055f;
+        lut[i] = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, s * 255.0f + 0.5f)));
+    }
+    p.lut = lut.data();
 
-    // Output: ARGB_8888. Android's copyPixelsFromBuffer expects bytes in [R, G, B, A] order.
-    // On little-endian ARM, an int (A<<24)|(B<<16)|(G<<8)|R is stored in memory as
-    // [R, G, B, A] — which is what ARGB_8888 wants. So the formula below is correct:
-    //   int = (A<<24) | (B<<16) | (G<<8) | R
-    // (Previously the code used R<<16, B at low byte => Red & Blue were swapped.)
+    void *pixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS || pixels == nullptr) {
+        LOGE("AndroidBitmap_lockPixels failed");
+        return JNI_FALSE;
+    }
+    p.dst = static_cast<uint8_t *>(pixels);
+    p.dstStride = static_cast<int>(info.stride);
 
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            // Bilinear demosaic: average neighbours of same channel
-            float r, g, b;
+    unsigned hw = std::thread::hardware_concurrency();
+    int threads = static_cast<int>(std::min(4u, std::max(1u, hw)));
+    if (height < 64) threads = 1;
 
-            if (isRedAt(x, y)) {
-                r = getRaw(x, y) * rg;
-                g = (getRaw(x - 1, y) + getRaw(x + 1, y) +
-                     getRaw(x, y - 1) + getRaw(x, y + 1)) * 0.25f * gg;
-                b = (getRaw(x - 1, y - 1) + getRaw(x + 1, y - 1) +
-                     getRaw(x - 1, y + 1) + getRaw(x + 1, y + 1)) * 0.25f * bg;
-            } else if (isBlueAt(x, y)) {
-                b = getRaw(x, y) * bg;
-                g = (getRaw(x - 1, y) + getRaw(x + 1, y) +
-                     getRaw(x, y - 1) + getRaw(x, y + 1)) * 0.25f * gg;
-                r = (getRaw(x - 1, y - 1) + getRaw(x + 1, y - 1) +
-                     getRaw(x - 1, y + 1) + getRaw(x + 1, y + 1)) * 0.25f * rg;
-            } else {
-                // Green site — detect which channel sits on the horizontal neighbours
-                g = getRaw(x, y) * gg;
-                if (colorAt(x + 1, y) == 0) {
-                    // Horizontal neighbours are R, vertical are B
-                    r = (getRaw(x - 1, y) + getRaw(x + 1, y)) * 0.5f * rg;
-                    b = (getRaw(x, y - 1) + getRaw(x, y + 1)) * 0.5f * bg;
-                } else {
-                    // Horizontal neighbours are B, vertical are R
-                    b = (getRaw(x - 1, y) + getRaw(x + 1, y)) * 0.5f * bg;
-                    r = (getRaw(x, y - 1) + getRaw(x, y + 1)) * 0.5f * rg;
-                }
+    if (threads == 1) {
+        processRows(p, 0, height);
+    } else {
+        std::vector<std::thread> pool;
+        const int chunk = (height + threads - 1) / threads;
+        int started = 0;
+        try {
+            for (int t = 1; t < threads; t++) {
+                const int y0 = t * chunk;
+                const int y1 = std::min(height, y0 + chunk);
+                if (y0 >= y1) break;
+                pool.emplace_back([&p, y0, y1]() { processRows(p, y0, y1); });
+                started++;
             }
-
-            // Apply color correction matrix (3x3, row-major from camera2 ColorSpaceTransform)
-            // Matrix layout from Kotlin:
-            //   index 0..2 = row 0 (R-out coefficients for R_in, G_in, B_in)
-            //   index 3..5 = row 1 (G-out)
-            //   index 6..8 = row 2 (B-out)
-            float nr = ccm[0] * r + ccm[1] * g + ccm[2] * b;
-            float ng = ccm[3] * r + ccm[4] * g + ccm[5] * b;
-            float nb = ccm[6] * r + ccm[7] * g + ccm[8] * b;
-
-            // sRGB gamma encoding (linear → sRGB curve)
-            auto toSrgb = [](float v) -> float {
-                if (v <= 0.0031308f) return v * 12.92f;
-                return 1.055f * std::pow(v, 1.0f / 2.4f) - 0.055f;
-            };
-
-            // FIX: white level was hardcoded 4095 — 10-bit sensors produced dark images.
-            // Now uses the real value from SENSOR_INFO_WHITE_LEVEL passed from Kotlin.
-            float scale = (whiteLevel > 0) ? 1.0f / static_cast<float>(whiteLevel)
-                                           : (1.0f / 4095.0f);
-            float lr = nr * scale;
-            float lg = ng * scale;
-            float lb = nb * scale;
-
-            // Apply gamma
-            float gr = toSrgb(lr) * 255.0f;
-            float gg2 = toSrgb(lg) * 255.0f;
-            float gb = toSrgb(lb) * 255.0f;
-
-            uint8_t orr = clamp8(gr);
-            uint8_t og = clamp8(gg2);
-            uint8_t ob = clamp8(gb);
-
-            // Pack as ARGB_8888 in memory order [R, G, B, A] on little-endian:
-            // int = (A<<24) | (B<<16) | (G<<8) | R
-            uint32_t color = (0xFFu << 24) | (static_cast<uint32_t>(ob) << 16)
-                             | (static_cast<uint32_t>(og) << 8)
-                             | static_cast<uint32_t>(orr);
-            outPixels[y * width + x] = color;
+        } catch (...) {
+            
         }
+        processRows(p, 0, std::min(height, chunk));
+        for (auto &th : pool) th.join();
+        
+        const int doneUntil = std::min(height, chunk * (started + 1));
+        if (doneUntil < height) processRows(p, doneUntil, height);
     }
 
-    env->ReleaseFloatArrayElements(ccmArray, ccm, JNI_ABORT);
-    env->ReleaseByteArrayElements(rawData, rawBytes, JNI_ABORT);
-    env->ReleaseByteArrayElements(outputData, outputBytes, 0);
+    AndroidBitmap_unlockPixels(env, bitmap);
+    return JNI_TRUE;
 }
