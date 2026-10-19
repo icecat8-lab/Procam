@@ -10,7 +10,9 @@ class MenuActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_menu)
 
-        findViewById<View>(R.id.btn_back).setOnClickListener { finish() }
+        val back = findViewById<View>(R.id.btn_back)
+        AnimUtils.pressable(back, 0.88f)
+        back.setOnClickListener { finish() }
 
         val rawSwitch = findViewById<CompoundButton>(R.id.switch_raw)
         rawSwitch.isChecked = AppSettings.isRawEnabled(this)
@@ -18,6 +20,13 @@ class MenuActivity : ComponentActivity() {
             AppSettings.setRawEnabled(this, checked)
         }
 
-        findViewById<View>(R.id.row_raw).setOnClickListener { rawSwitch.toggle() }
+        val row = findViewById<View>(R.id.row_raw)
+        AnimUtils.pressable(row, 0.985f)
+        row.setOnClickListener { rawSwitch.toggle() }
+    }
+
+    override fun finish() {
+        super.finish()
+        AnimUtils.slideClose(this)
     }
 }
