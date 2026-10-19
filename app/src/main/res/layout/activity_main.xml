@@ -26,8 +26,8 @@
 
     <RelativeLayout
         android:id="@+id/focus_ring"
-        android:layout_width="92dp"
-        android:layout_height="92dp"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
         android:layout_centerInParent="true"
         android:background="@drawable/focus_frame"
         android:visibility="gone">
@@ -56,11 +56,56 @@
     </RelativeLayout>
 
     <LinearLayout
+        android:id="@+id/slider_panel"
+        android:layout_above="@+id/bottom_controls"
+        android:layout_marginBottom="8dp"
+        android:clickable="true"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="14dp"
+        android:paddingBottom="12dp"
+        android:background="@drawable/bg_panel"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/slider_value_title"
+            style="@style/SliderTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingBottom="6dp"
+            android:text="ISO 100" />
+
+        <com.procamera.RulerView
+            android:id="@+id/setting_ruler"
+            android:layout_width="match_parent"
+            android:layout_height="56dp" />
+
+        <ImageView
+            android:id="@+id/btn_auto_toggle"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginTop="4dp"
+            android:padding="8dp"
+            android:background="@drawable/bg_circle_button"
+            android:contentDescription="@string/cd_reset_auto"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_reset"
+            android:tint="@color/accent_yellow" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/top_bar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:layout_alignParentTop="true"
         android:layout_marginTop="0dp"
+        android:clickable="true"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="16dp"
@@ -92,7 +137,7 @@
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
             android:background="@drawable/bg_pill_button"
-            android:text="@string/ratio_4_3" />
+            android:text="@string/ratio_16_9" />
 
         <ImageView
             android:id="@+id/btn_menu"
@@ -112,62 +157,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
+        android:clickable="true"
         android:orientation="vertical"
         android:paddingBottom="0dp"
         android:paddingTop="8dp">
-
-        <LinearLayout
-            android:id="@+id/slider_panel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:layout_marginStart="16dp"
-            android:layout_marginEnd="16dp"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:paddingTop="14dp"
-            android:paddingBottom="12dp"
-            android:background="@drawable/bg_panel"
-            android:visibility="gone">
-
-            <TextView
-                android:id="@+id/slider_value_title"
-                style="@style/SliderTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:paddingBottom="6dp"
-                android:text="ISO 100" />
-
-            <SeekBar
-                android:id="@+id/setting_seekbar"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:max="100"
-                android:progress="0"
-                android:thumb="@drawable/ruler_thumb"
-                android:progressTint="@color/accent_yellow"
-                android:thumbTint="@color/accent_yellow"
-                android:progressBackgroundTint="@color/white_20"
-                android:background="@android:color/transparent"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                android:minHeight="32dp"
-                android:splitTrack="false" />
-
-            <TextView
-                android:id="@+id/btn_auto_toggle"
-                style="@style/AutoToggleText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_auto_pill"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:paddingTop="6dp"
-                android:paddingBottom="6dp"
-                android:text="@string/mode_auto" />
-        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
