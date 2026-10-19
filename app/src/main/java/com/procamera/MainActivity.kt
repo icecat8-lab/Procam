@@ -10,6 +10,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
+import android.hardware.camera2.CaptureRequest
 import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Build
@@ -17,14 +18,13 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.view.HapticFeedbackConstants
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
-import android.view.animation.AnimationUtils
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -54,8 +54,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var focusEvText: TextView
 
     private lateinit var sliderPanel: LinearLayout
-    private lateinit var settingSeekbar: SeekBar
-    private lateinit var btnAutoToggle: TextView
+    private lateinit var settingRuler: RulerView
+    private lateinit var btnAutoToggle: ImageView
     private lateinit var sliderValueTitle: TextView
 
     private lateinit var btnAf: TextView
@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
 
     private var permissionPromptShown = false
     private var topInset = 0
+    private var shownThumbUri: Uri? = null
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -119,7 +120,7 @@ class MainActivity : ComponentActivity() {
         focusEvText = findViewById(R.id.focus_ev_text)
 
         sliderPanel = findViewById(R.id.slider_panel)
-        settingSeekbar = findViewById(R.id.setting_seekbar)
+        settingRuler = findViewById(R.id.setting_ruler)
         btnAutoToggle = findViewById(R.id.btn_auto_toggle)
         sliderValueTitle = findViewById(R.id.slider_value_title)
 
@@ -128,10 +129,18 @@ class MainActivity : ComponentActivity() {
         btnWb = findViewById(R.id.btn_wb)
         btnS = findViewById(R.id.btn_s)
         btnEv = findViewById(R.id.btn_ev)
+
+        val autoText = getString(R.string.label_auto)
+        btnAf.text = "AF\n$autoText"
+        btnIso.text = "ISO\n$autoText"
+        btnWb.text = "WB\n$autoText"
+        btnS.text = "S\n$autoText"
+        settingRuler.autoLabel = autoText
     }
 
     private fun setupCameraController() {
         cameraController = CameraController(this, viewFinder)
+        cameraController.is16by9 = true
         cameraController.onCameraStateUpdated = { focusDist, iso, speedNanos ->
             if (cameraController.isAfAuto) {
                 btnAf.text = String.format(Locale.US, "AF\n%.1f", focusDist)
@@ -171,11 +180,27 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setupListeners() {
+        AnimUtils.pressable(btnFlash)
+        AnimUtils.pressable(btnRatio)
+        AnimUtils.pressable(btnMenu)
+        AnimUtils.pressable(thumbnailView, 0.94f)
+        AnimUtils.pressable(btnCapture, 0.86f)
+        AnimUtils.pressable(btnAutoToggle, 0.88f)
+        listOf(btnAf, btnIso, btnWb, btnS, btnEv).forEach { AnimUtils.pressable(it, 0.9f) }
+
         btnRatio.setOnClickListener {
             val newIs16by9 = !cameraController.is16by9
             btnRatio.text = if (newIs16by9) getString(R.string.ratio_16_9) else getString(R.string.ratio_4_3)
             adjustPreviewAspectRatio(newIs16by9)
             cameraController.switchRatio(newIs16by9)
+            viewFinder.animate().cancel()
+            viewFinder.alpha = 0.15f
+            viewFinder.animate()
+                .alpha(1f)
+                .setStartDelay(380)
+                .setDuration(300)
+                .setInterpolator(AnimUtils.smooth)
+                .start()
         }
 
         btnFlash.setOnClickListener {
@@ -189,16 +214,16 @@ class MainActivity : ComponentActivity() {
             btnFlash.setImageResource(if (on) R.drawable.ic_flash_on else R.drawable.ic_flash_off)
 
             btnFlash.imageTintList = ColorStateList.valueOf(if (on) accentColor() else Color.WHITE)
-            btnFlash.startAnimation(AnimationUtils.loadAnimation(this, android.R.anim.fade_in))
         }
 
         btnMenu.setOnClickListener {
             startActivity(Intent(this, MenuActivity::class.java))
+            AnimUtils.slideOpen(this)
         }
 
         btnAutoToggle.setOnClickListener {
             val targetProgress = if (viewModel.activeMode == "EV") 50 else 0
-            settingSeekbar.progress = targetProgress
+            settingRuler.progress = targetProgress
             updateSliderUI(targetProgress, fromUser = true)
         }
 
@@ -208,10 +233,17 @@ class MainActivity : ComponentActivity() {
         }
 
         btnCapture.setOnClickListener {
+            btnCapture.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             cameraController.takePicture(currentRotation())
 
-            viewFinder.alpha = 0.4f
-            mainHandler.postDelayed({ viewFinder.alpha = 1.0f }, 80)
+            viewFinder.animate().cancel()
+            viewFinder.alpha = 0.35f
+            viewFinder.animate()
+                .alpha(1f)
+                .setStartDelay(0)
+                .setDuration(220)
+                .setInterpolator(AnimUtils.smooth)
+                .start()
         }
 
         btnAf.setOnClickListener {
@@ -230,22 +262,17 @@ class MainActivity : ComponentActivity() {
         }
         btnEv.setOnClickListener { toggleSlider("EV", viewModel.evProgress) }
 
-        settingSeekbar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) updateSliderUI(progress, fromUser = true)
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                cameraController.applySettings()
-            }
-        })
+        settingRuler.onProgressChanged = { progress ->
+            updateSliderUI(progress, fromUser = true)
+        }
+        settingRuler.onTrackingStopped = {
+            cameraController.applySettings()
+        }
     }
 
     private fun updateSliderUI(progress: Int, fromUser: Boolean) {
         val isAuto = if (viewModel.activeMode == "EV") progress == 50 else progress == 0
-        btnAutoToggle.setTextColor(if (isAuto) accentColor() else Color.WHITE)
+        btnAutoToggle.imageTintList = ColorStateList.valueOf(if (isAuto) accentColor() else Color.WHITE)
 
         when (viewModel.activeMode) {
             "AF" -> {
@@ -255,9 +282,9 @@ class MainActivity : ComponentActivity() {
                     val focus = cameraController.calculateFocus(progress)
                     cameraController.currentFocusDistance = focus
                     btnAf.text = String.format(Locale.US, "AF\n%.1f", focus)
-                    sliderValueTitle.text = String.format(Locale.US, "FOCUS  %.1f", focus)
+                    sliderValueTitle.text = getString(R.string.label_focus) + "  " + String.format(Locale.US, "%.1f", focus)
                 } else {
-                    sliderValueTitle.text = "FOCUS  AUTO"
+                    sliderValueTitle.text = getString(R.string.label_focus) + "  " + getString(R.string.label_auto)
                 }
             }
             "ISO" -> {
@@ -269,14 +296,14 @@ class MainActivity : ComponentActivity() {
                     btnIso.text = "ISO\n$iso"
                     sliderValueTitle.text = "ISO  $iso"
                 } else {
-                    sliderValueTitle.text = "ISO  AUTO"
+                    sliderValueTitle.text = "ISO  " + getString(R.string.label_auto)
                 }
             }
             "WB" -> {
                 viewModel.wbProgress = progress
                 val mode = cameraController.getWbMode(progress)
                 cameraController.currentWb = mode
-                val label = cameraController.getWbLabel(mode)
+                val label = wbText(mode)
                 btnWb.text = "WB\n$label"
                 sliderValueTitle.text = "WB  $label"
             }
@@ -288,9 +315,9 @@ class MainActivity : ComponentActivity() {
                     cameraController.currentExposureTime = speedNanos
                     val label = formatShutterText(speedNanos)
                     btnS.text = "S\n$label"
-                    sliderValueTitle.text = "SHUTTER  $label"
+                    sliderValueTitle.text = getString(R.string.label_shutter) + "  " + label
                 } else {
-                    sliderValueTitle.text = "SHUTTER  AUTO"
+                    sliderValueTitle.text = getString(R.string.label_shutter) + "  " + getString(R.string.label_auto)
                 }
             }
             "EV" -> {
@@ -317,21 +344,40 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun toggleSlider(mode: String, currentProgress: Int) {
+        val density = resources.displayMetrics.density
         if (viewModel.activeMode == mode) {
             viewModel.activeMode = "NONE"
             resetButtonColors()
             sliderPanel.animate().cancel()
-            sliderPanel.animate().alpha(0f).setDuration(120).withEndAction {
-                if (viewModel.activeMode == "NONE") sliderPanel.visibility = View.GONE
-            }.start()
+            sliderPanel.animate()
+                .alpha(0f)
+                .translationY(16 * density)
+                .setStartDelay(0)
+                .setDuration(180)
+                .setInterpolator(AnimUtils.smooth)
+                .withLayer()
+                .withEndAction {
+                    if (viewModel.activeMode == "NONE") sliderPanel.visibility = View.GONE
+                }
+                .start()
             return
         }
 
         viewModel.activeMode = mode
         sliderPanel.animate().cancel()
-        sliderPanel.visibility = View.VISIBLE
-        sliderPanel.alpha = 0f
-        sliderPanel.animate().alpha(1f).setDuration(180).start()
+        if (sliderPanel.visibility != View.VISIBLE) {
+            sliderPanel.alpha = 0f
+            sliderPanel.translationY = 24 * density
+            sliderPanel.visibility = View.VISIBLE
+        }
+        sliderPanel.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setStartDelay(0)
+            .setDuration(260)
+            .setInterpolator(AnimUtils.smooth)
+            .withLayer()
+            .start()
 
         resetButtonColors()
         when (mode) {
@@ -342,8 +388,9 @@ class MainActivity : ComponentActivity() {
             "EV" -> btnEv.setTextColor(accentColor())
         }
 
+        settingRuler.autoPosition = if (mode == "EV") 50 else 0
+        settingRuler.progress = currentProgress
         updateSliderUI(currentProgress, false)
-        settingSeekbar.progress = currentProgress
     }
 
     private fun restoreSliderUI() {
@@ -389,7 +436,7 @@ class MainActivity : ComponentActivity() {
 
         val wb = viewModel.wbProgress
         c.currentWb = c.getWbMode(wb)
-        if (wb != 0) btnWb.text = "WB\n${c.getWbLabel(c.currentWb)}"
+        if (wb != 0) btnWb.text = "WB\n${wbText(c.currentWb)}"
 
         val ev = viewModel.evProgress
         c.currentEv = c.calculateEv(ev)
@@ -411,7 +458,7 @@ class MainActivity : ComponentActivity() {
             val availW = if (root.width > 0) root.width else resources.displayMetrics.widthPixels
             val availH = if (root.height > 0) root.height else resources.displayMetrics.heightPixels
 
-            val topOffset = if (is16by9) 0 else topInset + (64 * density).toInt()
+            val topOffset = topInset + (64 * density).toInt()
             val maxH = availH - topOffset
 
             var w = availW
@@ -590,6 +637,20 @@ class MainActivity : ComponentActivity() {
 
     private fun accentColor(): Int = Color.parseColor("#FFD60A")
 
+    private fun wbText(mode: Int): String {
+        val resId = when (mode) {
+            CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT -> R.string.wb_cloud
+            CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT -> R.string.wb_sun
+            CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT -> R.string.wb_fluor
+            CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT -> R.string.wb_incan
+            CaptureRequest.CONTROL_AWB_MODE_SHADE -> R.string.wb_shade
+            CaptureRequest.CONTROL_AWB_MODE_TWILIGHT -> R.string.wb_twilight
+            CaptureRequest.CONTROL_AWB_MODE_WARM_FLUORESCENT -> R.string.wb_warm
+            else -> R.string.label_auto
+        }
+        return getString(resId)
+    }
+
     private fun toastManualUnsupported() {
         Toast.makeText(this, R.string.toast_manual_not_supported, Toast.LENGTH_SHORT).show()
     }
@@ -604,8 +665,25 @@ class MainActivity : ComponentActivity() {
                 }
             }
             if (bitmap != null) {
+                val changed = shownThumbUri != uri
+                shownThumbUri = uri
                 thumbnailView.setImageBitmap(bitmap)
+                if (changed) {
+                    thumbnailView.animate().cancel()
+                    thumbnailView.alpha = 0.3f
+                    thumbnailView.scaleX = 0.85f
+                    thumbnailView.scaleY = 0.85f
+                    thumbnailView.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setStartDelay(0)
+                        .setDuration(320)
+                        .setInterpolator(AnimUtils.spring)
+                        .start()
+                }
             } else {
+                shownThumbUri = null
                 viewModel.latestImageUri = null
                 thumbnailView.setImageDrawable(null)
             }
