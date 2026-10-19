@@ -538,6 +538,120 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private fun hasCameraPermission(): Boolean =
-        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-          
+    private fun hasCameraPermission(): Boolean {
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+        return granted == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun missingPermissions(): List<String> {
+        val wanted = mutableListOf(Manifest.permission.CAMERA)
+
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            wanted.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            wanted.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        return wanted.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    private fun checkPermissionsAndStart() {
+        if (hasCameraPermission()) startCameraIfReady()
+
+        val missing = missingPermissions()
+        if (missing.isNotEmpty() && !permissionPromptShown) {
+            permissionPromptShown = true
+            requestPermissionLauncher.launch(missing.toTypedArray())
+        }
+    }
+
+    private fun startCameraIfReady() {
+        if (viewFinder.isAvailable && hasCameraPermission()) {
+            adjustPreviewAspectRatio(cameraController.is16by9)
+            cameraController.openCamera()
+            syncControllerFromViewModel()
+        }
+    }
+
+    private val surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+        override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+            adjustPreviewAspectRatio(cameraController.is16by9)
+            checkPermissionsAndStart()
+        }
+
+        override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+            cameraController.reapplyPreviewBufferSize()
+        }
+
+        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture) = true
+
+        override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+    }
+
+    private fun accentColor(): Int = Color.parseColor("#FFD60A")
+
+    private fun toastManualUnsupported() {
+        Toast.makeText(this, R.string.toast_manual_not_supported, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun loadThumbnailInto(uri: Uri) {
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                try {
+                    decodeThumbnail(uri, 256)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (bitmap != null) {
+                thumbnailView.setImageBitmap(bitmap)
+            } else {
+                viewModel.latestImageUri = null
+                thumbnailView.setImageDrawable(null)
+            }
+        }
+    }
+
+    private fun decodeThumbnail(uri: Uri, targetSize: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        val boundsStream = contentResolver.openInputStream(uri) ?: return null
+        boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        var sample = 1
+        while (true) {
+            val nextW = bounds.outWidth / (sample * 2)
+            val nextH = bounds.outHeight / (sample * 2)
+            if (nextW < targetSize || nextH < targetSize) break
+            sample *= 2
+        }
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val src = contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, opts)
+        } ?: return null
+
+        val rotated = rotateByExif(uri, src)
+        return ThumbnailUtils.extractThumbnail(
+            rotated, targetSize, targetSize, ThumbnailUtils.OPTIONS_RECYCLE_INPUT
+        )
+    }
+
+    private fun rotateByExif(uri: Uri, bmp: Bitmap): Bitmap = try {
+        val orientation = contentResolver.openInputStream(uri)?.use {
+            ExifInterface(it).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+            )
+        } ?: ExifInterface.ORIENTATION_NORMAL
+        val rotation = when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        if (rotation == 0f) bmp else Bitmap.createBitmap(
+            bmp, 0, 0, bmp.width, bmp.height, Matrix().apply { postRotate(rotation) }, true
+        )
+    } catch (e: Exception) {
+        bmp
+    }
+}
