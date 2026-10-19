@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pro Camera</string>
+
+    <string name="ratio_4_3">4:3</string>
+    <string name="ratio_16_9">16:9</string>
+
+    <string name="label_auto">อัตโนมัติ</string>
+    <string name="label_focus">โฟกัส</string>
+    <string name="label_shutter">ชัตเตอร์</string>
+
+    <string name="wb_cloud">เมฆ</string>
+    <string name="wb_sun">แดด</string>
+    <string name="wb_fluor">ฟลูออเรสเซนต์</string>
+    <string name="wb_incan">ไส้หลอด</string>
+    <string name="wb_shade">ร่ม</string>
+    <string name="wb_twilight">โพล้เพล้</string>
+    <string name="wb_warm">อุ่น</string>
+
+    <string name="cd_flash">แฟลช</string>
+    <string name="cd_shutter">ชัตเตอร์</string>
+    <string name="cd_thumbnail">รูปล่าสุด</string>
+    <string name="cd_focus_ring">กรอบโฟกัส</string>
+    <string name="cd_menu">เมนู</string>
+    <string name="cd_back">ย้อนกลับ</string>
+    <string name="cd_reset_auto">รีเซ็ตเป็นอัตโนมัติ</string>
+
+    <string name="menu_title">เมนู</string>
+    <string name="menu_section_camera">ตั้งค่ากล้อง</string>
+    <string name="menu_raw_title">RAW</string>
+
+    <string name="toast_no_camera">ไม่พบกล้องหลัง</string>
+    <string name="toast_camera_not_ready">กล้องยังไม่พร้อม</string>
+    <string name="toast_no_viewer_app">ไม่พบแอปสำหรับดูรูปภาพ</string>
+    <string name="toast_camera_permission_required">จำเป็นต้องใช้สิทธิ์กล้องถ่ายรูป</string>
+    <string name="toast_camera_error">กล้องขัดข้อง (error %1$d)</string>
+    <string name="toast_open_camera_failed">เปิดกล้องไม่สำเร็จ</string>
+    <string name="toast_manual_not_supported">อุปกรณ์นี้ไม่รองรับโหมดปรับค่าเอง</string>
+    <string name="toast_flash_not_available">อุปกรณ์นี้ไม่มีแฟลช</string>
+    <string name="toast_busy">กำลังบันทึกภาพก่อนหน้า กรุณารอสักครู่</string>
+    <string name="toast_save_failed">บันทึกภาพไม่สำเร็จ</string>
+    <string name="toast_capture_failed">ถ่ายภาพไม่สำเร็จ</string>
+</resources>
