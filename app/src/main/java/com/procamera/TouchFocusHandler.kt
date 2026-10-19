@@ -1,13 +1,11 @@
 package com.procamera
 
-import android.animation.AnimatorSet
-import android.animation.ObjectAnimator
 import android.content.Context
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.TextureView
 import android.view.View
-import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 
 class TouchFocusHandler(
     context: Context,
@@ -19,7 +17,7 @@ class TouchFocusHandler(
 
     private val hideRingRunnable = Runnable {
         if (!isFrameLocked) {
-            focusRing.animate().alpha(0f).setDuration(220).withEndAction {
+            focusRing.animate().alpha(0f).setStartDelay(0).setDuration(220).setInterpolator(AnimUtils.smooth).withEndAction {
                 if (!isFrameLocked) focusRing.visibility = View.GONE
             }.start()
         }
@@ -38,6 +36,7 @@ class TouchFocusHandler(
             override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (!insideFrame(e)) return true
                 focusRing.removeCallbacks(lockRunnable)
                 if (isFrameLocked) {
                     isFrameLocked = false
@@ -52,6 +51,7 @@ class TouchFocusHandler(
             }
 
             override fun onLongPress(e: MotionEvent) {
+                if (!insideFrame(e)) return
                 isFrameLocked = true
                 focusRing.removeCallbacks(hideRingRunnable)
                 showFocusRingAt(e.x, e.y, locked = true)
@@ -62,13 +62,17 @@ class TouchFocusHandler(
         }
     )
 
+    private fun insideFrame(e: MotionEvent): Boolean {
+        return e.x >= 0f && e.y >= 0f && e.x <= viewFinder.width && e.y <= viewFinder.height
+    }
+
     override fun onTouch(v: View, event: MotionEvent): Boolean {
         gestureDetector.onTouchEvent(event)
         return true
     }
 
     private fun showFocusRingAt(touchX: Float, touchY: Float, locked: Boolean) {
-        val fallbackSize = 92f * viewFinder.resources.displayMetrics.density
+        val fallbackSize = 64f * viewFinder.resources.displayMetrics.density
         val ringW = if (focusRing.width > 0) focusRing.width.toFloat() else fallbackSize
         val ringH = if (focusRing.height > 0) focusRing.height.toFloat() else fallbackSize
 
@@ -90,13 +94,14 @@ class TouchFocusHandler(
         focusRing.x = ringX
         focusRing.y = ringY
 
-        val scaleX = ObjectAnimator.ofFloat(focusRing, View.SCALE_X, 0.6f, 1f)
-        val scaleY = ObjectAnimator.ofFloat(focusRing, View.SCALE_Y, 0.6f, 1f)
-        AnimatorSet().apply {
-            playTogether(scaleX, scaleY)
-            duration = 180
-            interpolator = DecelerateInterpolator()
-            start()
-        }
+        focusRing.scaleX = 1.4f
+        focusRing.scaleY = 1.4f
+        focusRing.animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .setStartDelay(0)
+            .setDuration(240)
+            .setInterpolator(OvershootInterpolator(1.4f))
+            .start()
     }
 }
