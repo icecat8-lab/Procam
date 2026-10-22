@@ -9,14 +9,6 @@
     <string name="label_focus">โฟกัส</string>
     <string name="label_shutter">ชัตเตอร์</string>
 
-    <string name="wb_cloud">เมฆ</string>
-    <string name="wb_sun">แดด</string>
-    <string name="wb_fluor">ฟลูออเรสเซนต์</string>
-    <string name="wb_incan">ไส้หลอด</string>
-    <string name="wb_shade">ร่ม</string>
-    <string name="wb_twilight">โพล้เพล้</string>
-    <string name="wb_warm">อุ่น</string>
-
     <string name="cd_flash">แฟลช</string>
     <string name="cd_shutter">ชัตเตอร์</string>
     <string name="cd_thumbnail">รูปล่าสุด</string>
