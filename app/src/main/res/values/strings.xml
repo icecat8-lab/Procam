@@ -9,14 +9,6 @@
     <string name="label_focus">FOCUS</string>
     <string name="label_shutter">SHUTTER</string>
 
-    <string name="wb_cloud">Cloud</string>
-    <string name="wb_sun">Sun</string>
-    <string name="wb_fluor">Fluor</string>
-    <string name="wb_incan">Incan</string>
-    <string name="wb_shade">Shade</string>
-    <string name="wb_twilight">Twilight</string>
-    <string name="wb_warm">Warm</string>
-
     <string name="cd_flash">Flash</string>
     <string name="cd_shutter">Shutter</string>
     <string name="cd_thumbnail">Last photo</string>
