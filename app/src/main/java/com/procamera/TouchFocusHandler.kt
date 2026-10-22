@@ -2,6 +2,7 @@ package com.procamera
 
 import android.content.Context
 import android.view.GestureDetector
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.TextureView
 import android.view.View
@@ -53,6 +54,7 @@ class TouchFocusHandler(
             override fun onLongPress(e: MotionEvent) {
                 if (!insideFrame(e)) return
                 isFrameLocked = true
+                focusRing.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 focusRing.removeCallbacks(hideRingRunnable)
                 showFocusRingAt(e.x, e.y, locked = true)
                 cameraController.triggerFocusAtPoint(e.x, e.y, viewFinder.width, viewFinder.height)
@@ -94,14 +96,35 @@ class TouchFocusHandler(
         focusRing.x = ringX
         focusRing.y = ringY
 
-        focusRing.scaleX = 1.4f
-        focusRing.scaleY = 1.4f
-        focusRing.animate()
-            .scaleX(1f)
-            .scaleY(1f)
-            .setStartDelay(0)
-            .setDuration(240)
-            .setInterpolator(OvershootInterpolator(1.4f))
-            .start()
+        if (locked) {
+            focusRing.scaleX = 1f
+            focusRing.scaleY = 1f
+            focusRing.animate()
+                .scaleX(1.3f)
+                .scaleY(1.3f)
+                .setStartDelay(0)
+                .setDuration(140)
+                .setInterpolator(AnimUtils.smooth)
+                .withEndAction {
+                    focusRing.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setStartDelay(0)
+                        .setDuration(320)
+                        .setInterpolator(OvershootInterpolator(2.5f))
+                        .start()
+                }
+                .start()
+        } else {
+            focusRing.scaleX = 1.4f
+            focusRing.scaleY = 1.4f
+            focusRing.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .setStartDelay(0)
+                .setDuration(240)
+                .setInterpolator(OvershootInterpolator(1.4f))
+                .start()
+        }
     }
 }
