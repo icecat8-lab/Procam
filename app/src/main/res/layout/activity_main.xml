@@ -28,7 +28,8 @@
         android:id="@+id/focus_ring"
         android:layout_width="64dp"
         android:layout_height="64dp"
-        android:layout_centerInParent="true"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true"
         android:background="@drawable/focus_frame"
         android:visibility="gone">
 
@@ -102,21 +103,21 @@
     <LinearLayout
         android:id="@+id/top_bar"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="48dp"
         android:layout_alignParentTop="true"
         android:layout_marginTop="0dp"
         android:clickable="true"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp">
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
 
         <ImageView
             android:id="@+id/btn_flash"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:padding="10dp"
-            android:background="@drawable/bg_circle_button"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:padding="9dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/cd_flash"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_flash_off"
@@ -131,21 +132,22 @@
             android:id="@+id/btn_ratio"
             style="@style/TopBarText"
             android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:minWidth="64dp"
+            android:layout_height="40dp"
+            android:minWidth="48dp"
             android:gravity="center"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:background="@drawable/bg_pill_button"
-            android:text="@string/ratio_16_9" />
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:text="@string/ratio_4_3"
+            android:textSize="13sp" />
 
         <ImageView
             android:id="@+id/btn_menu"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:layout_marginStart="10dp"
-            android:padding="10dp"
-            android:background="@drawable/bg_circle_button"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="4dp"
+            android:padding="9dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/cd_menu"
             android:scaleType="fitCenter"
             android:src="@drawable/more_vert_24px"
@@ -158,79 +160,23 @@
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         android:clickable="true"
+        android:clipChildren="false"
         android:orientation="vertical"
         android:paddingBottom="0dp"
-        android:paddingTop="8dp">
+        android:paddingTop="0dp">
 
-        <LinearLayout
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:paddingBottom="8dp"
-            android:paddingTop="12dp">
-
-            <TextView
-                android:id="@+id/btn_af"
-                style="@style/ModeButtonText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minHeight="48dp"
-                android:text="AF\nAUTO" />
-
-            <TextView
-                android:id="@+id/btn_iso"
-                style="@style/ModeButtonText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minHeight="48dp"
-                android:text="ISO\nAUTO" />
-
-            <TextView
-                android:id="@+id/btn_wb"
-                style="@style/ModeButtonText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minHeight="48dp"
-                android:text="WB\nAUTO" />
-
-            <TextView
-                android:id="@+id/btn_s"
-                style="@style/ModeButtonText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minHeight="48dp"
-                android:text="S\nAUTO" />
-
-            <TextView
-                android:id="@+id/btn_ev"
-                style="@style/ModeButtonText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:minHeight="48dp"
-                android:text="EV\n0.0" />
-        </LinearLayout>
-
-        <RelativeLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="88dp"
+            android:clipChildren="false"
             android:paddingStart="28dp"
-            android:paddingEnd="28dp"
-            android:paddingTop="4dp">
+            android:paddingEnd="28dp">
 
             <ImageView
                 android:id="@+id/thumbnail_view"
                 android:layout_width="52dp"
                 android:layout_height="52dp"
-                android:layout_centerVertical="true"
-                android:layout_alignParentStart="true"
+                android:layout_gravity="start|center_vertical"
                 android:scaleType="centerCrop"
                 android:background="@drawable/bg_thumbnail"
                 android:clipToOutline="true"
@@ -240,17 +186,67 @@
                 android:id="@+id/btn_capture"
                 android:layout_width="76dp"
                 android:layout_height="76dp"
-                android:layout_centerInParent="true"
+                android:layout_gravity="center"
                 android:background="@drawable/shutter_button"
                 android:contentDescription="@string/cd_shutter" />
+        </FrameLayout>
 
-            <View
-                android:layout_width="52dp"
-                android:layout_height="52dp"
-                android:layout_centerVertical="true"
-                android:layout_alignParentEnd="true"
-                android:background="@android:color/transparent" />
-        </RelativeLayout>
+        <LinearLayout
+            android:id="@+id/mode_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="4dp"
+            android:paddingTop="4dp">
+
+            <TextView
+                android:id="@+id/btn_af"
+                style="@style/ModeButtonText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="44dp"
+                android:text="AF\nAUTO" />
+
+            <TextView
+                android:id="@+id/btn_iso"
+                style="@style/ModeButtonText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="44dp"
+                android:text="ISO\nAUTO" />
+
+            <TextView
+                android:id="@+id/btn_wb"
+                style="@style/ModeButtonText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="44dp"
+                android:text="WB\nAUTO" />
+
+            <TextView
+                android:id="@+id/btn_s"
+                style="@style/ModeButtonText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="44dp"
+                android:text="S\nAUTO" />
+
+            <TextView
+                android:id="@+id/btn_ev"
+                style="@style/ModeButtonText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="44dp"
+                android:text="EV\n0.0" />
+        </LinearLayout>
     </LinearLayout>
 
 </RelativeLayout>
