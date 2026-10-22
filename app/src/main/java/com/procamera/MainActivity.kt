@@ -10,7 +10,6 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
-import android.hardware.camera2.CaptureRequest
 import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.Build
@@ -133,14 +132,14 @@ class MainActivity : ComponentActivity() {
         val autoText = getString(R.string.label_auto)
         btnAf.text = "AF\n$autoText"
         btnIso.text = "ISO\n$autoText"
-        btnWb.text = "WB\n$autoText"
+        btnWb.text = "WB\nAUTO"
         btnS.text = "S\n$autoText"
         settingRuler.autoLabel = autoText
     }
 
     private fun setupCameraController() {
         cameraController = CameraController(this, viewFinder)
-        cameraController.is16by9 = true
+        cameraController.is16by9 = false
         cameraController.onCameraStateUpdated = { focusDist, iso, speedNanos ->
             if (cameraController.isAfAuto) {
                 btnAf.text = String.format(Locale.US, "AF\n%.1f", focusDist)
@@ -208,12 +207,10 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, R.string.toast_flash_not_available, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            val on = !cameraController.isFlashOn
-            cameraController.isFlashOn = on
+            val next = (cameraController.flashMode + 1) % 3
+            cameraController.flashMode = next
             cameraController.applySettings()
-            btnFlash.setImageResource(if (on) R.drawable.ic_flash_on else R.drawable.ic_flash_off)
-
-            btnFlash.imageTintList = ColorStateList.valueOf(if (on) accentColor() else Color.WHITE)
+            applyFlashIcon(next)
         }
 
         btnMenu.setOnClickListener {
@@ -303,7 +300,7 @@ class MainActivity : ComponentActivity() {
                 viewModel.wbProgress = progress
                 val mode = cameraController.getWbMode(progress)
                 cameraController.currentWb = mode
-                val label = wbText(mode)
+                val label = cameraController.getWbLabel(mode)
                 btnWb.text = "WB\n$label"
                 sliderValueTitle.text = "WB  $label"
             }
@@ -389,6 +386,7 @@ class MainActivity : ComponentActivity() {
         }
 
         settingRuler.autoPosition = if (mode == "EV") 50 else 0
+        settingRuler.autoLabel = if (mode == "WB") "AUTO" else getString(R.string.label_auto)
         settingRuler.progress = currentProgress
         updateSliderUI(currentProgress, false)
     }
@@ -436,11 +434,22 @@ class MainActivity : ComponentActivity() {
 
         val wb = viewModel.wbProgress
         c.currentWb = c.getWbMode(wb)
-        if (wb != 0) btnWb.text = "WB\n${wbText(c.currentWb)}"
+        if (wb != 0) btnWb.text = "WB\n${c.getWbLabel(c.currentWb)}"
 
         val ev = viewModel.evProgress
         c.currentEv = c.calculateEv(ev)
         if (ev != 50) btnEv.text = "EV\n${c.getEvLabel(ev)}"
+    }
+
+    private fun applyFlashIcon(mode: Int) {
+        val icon = when (mode) {
+            CameraController.FLASH_AUTO -> R.drawable.ic_flash_auto
+            CameraController.FLASH_ON -> R.drawable.ic_flash_on
+            else -> R.drawable.ic_flash_off
+        }
+        btnFlash.setImageResource(icon)
+        val tint = if (mode == CameraController.FLASH_ON) accentColor() else Color.WHITE
+        btnFlash.imageTintList = ColorStateList.valueOf(tint)
     }
 
     private fun resetButtonColors() {
@@ -455,17 +464,25 @@ class MainActivity : ComponentActivity() {
         viewFinder.post {
             val density = resources.displayMetrics.density
             val root = findViewById<View>(R.id.root_layout)
+            val bottomControls = findViewById<View>(R.id.bottom_controls)
+            val modeRow = findViewById<View>(R.id.mode_row)
             val availW = if (root.width > 0) root.width else resources.displayMetrics.widthPixels
             val availH = if (root.height > 0) root.height else resources.displayMetrics.heightPixels
 
-            val topOffset = topInset + (64 * density).toInt()
-            val maxH = availH - topOffset
+            val topBarBottom = topInset + (56 * density).toInt()
+            val maxH = availH - topBarBottom
 
             var w = availW
             var h = if (is16by9) w * 16 / 9 else w * 4 / 3
             if (h > maxH) {
                 h = maxH
                 w = if (is16by9) h * 9 / 16 else h * 3 / 4
+            }
+
+            var topOffset = topBarBottom
+            if (is16by9 && modeRow.height > 0) {
+                val modeTop = bottomControls.top + modeRow.top
+                topOffset = (modeTop - h).coerceAtLeast(topBarBottom)
             }
 
             val lp = viewFinder.layoutParams as ViewGroup.MarginLayoutParams
@@ -636,20 +653,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun accentColor(): Int = Color.parseColor("#FFD60A")
-
-    private fun wbText(mode: Int): String {
-        val resId = when (mode) {
-            CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT -> R.string.wb_cloud
-            CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT -> R.string.wb_sun
-            CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT -> R.string.wb_fluor
-            CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT -> R.string.wb_incan
-            CaptureRequest.CONTROL_AWB_MODE_SHADE -> R.string.wb_shade
-            CaptureRequest.CONTROL_AWB_MODE_TWILIGHT -> R.string.wb_twilight
-            CaptureRequest.CONTROL_AWB_MODE_WARM_FLUORESCENT -> R.string.wb_warm
-            else -> R.string.label_auto
-        }
-        return getString(resId)
-    }
 
     private fun toastManualUnsupported() {
         Toast.makeText(this, R.string.toast_manual_not_supported, Toast.LENGTH_SHORT).show()
