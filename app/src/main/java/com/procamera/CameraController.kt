@@ -87,7 +87,7 @@ class CameraController(
     @Volatile var currentWb = CaptureRequest.CONTROL_AWB_MODE_AUTO
     @Volatile var currentEv = 0
     @Volatile var isAELocked = false
-    @Volatile var isFlashOn = false
+    @Volatile var flashMode = FLASH_OFF
     @Volatile var rawEnabled = true
 
     var minIso = 50
@@ -574,12 +574,17 @@ class CameraController(
         else -> CaptureRequest.CONTROL_AF_MODE_OFF
     }
 
-    private fun supportsAlwaysFlash(): Boolean =
-        flashAvailable && aeModes.contains(CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH)
-
     private fun flashWanted(): Boolean {
         val manualExposure = isManualSupported && (!isIsoAuto || !isSpeedAuto)
-        return isFlashOn && flashAvailable && !manualExposure
+        return flashMode != FLASH_OFF && flashAvailable && !manualExposure
+    }
+
+    private fun flashAeMode(): Int {
+        if (!flashAvailable) return -1
+        if (flashMode == FLASH_ON && aeModes.contains(CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH)) {
+            return CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH
+        }
+        return -1
     }
 
     private fun configureBuilder(
@@ -608,15 +613,16 @@ class CameraController(
             b.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
         } else {
             b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
-            if (useFlash && supportsAlwaysFlash()) {
-                b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH)
+            val flashAe = if (useFlash) flashAeMode() else -1
+            if (flashAe != -1) {
+                b.set(CaptureRequest.CONTROL_AE_MODE, flashAe)
                 b.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
             } else {
                 b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                val singleFlash = stillCapture && useFlash && flashMode == FLASH_ON && flashAvailable
                 b.set(
                     CaptureRequest.FLASH_MODE,
-                    if (stillCapture && useFlash && flashAvailable) CaptureRequest.FLASH_MODE_SINGLE
-                    else CaptureRequest.FLASH_MODE_OFF
+                    if (singleFlash) CaptureRequest.FLASH_MODE_SINGLE else CaptureRequest.FLASH_MODE_OFF
                 )
             }
         }
@@ -816,7 +822,7 @@ class CameraController(
             mainUIHandler.postDelayed(shotWatchdog, 10_000L + exposureMs * 2)
 
             val request = builder.build()
-            if (useFlash && supportsAlwaysFlash() && !isAELocked) {
+            if (useFlash && flashAeMode() != -1 && !isAELocked) {
                 startPrecapture(session, request)
             } else {
                 session.capture(request, stillCaptureCallback, backgroundHandler)
@@ -942,7 +948,7 @@ class CameraController(
             pendingStillRequest = null
         }
         val session = captureSession
-        if (session != null && flashWanted() && supportsAlwaysFlash()) {
+        if (session != null && flashWanted() && flashAeMode() != -1) {
             try {
                 synchronized(builderLock) {
                     val builder = previewRequestBuilder
@@ -1250,5 +1256,7 @@ class CameraController(
 
     companion object {
         private const val TAG = "ProCamera"
+        const val FLASH_OFF = 0
+        const val FLASH_ON = 1
     }
 }
