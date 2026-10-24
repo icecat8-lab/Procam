@@ -207,7 +207,11 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, R.string.toast_flash_not_available, Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            val next = (cameraController.flashMode + 1) % 3
+            val next = if (cameraController.flashMode == CameraController.FLASH_ON) {
+                CameraController.FLASH_OFF
+            } else {
+                CameraController.FLASH_ON
+            }
             cameraController.flashMode = next
             cameraController.applySettings()
             applyFlashIcon(next)
@@ -442,14 +446,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyFlashIcon(mode: Int) {
-        val icon = when (mode) {
-            CameraController.FLASH_AUTO -> R.drawable.ic_flash_auto
-            CameraController.FLASH_ON -> R.drawable.ic_flash_on
-            else -> R.drawable.ic_flash_off
-        }
-        btnFlash.setImageResource(icon)
-        val tint = if (mode == CameraController.FLASH_ON) accentColor() else Color.WHITE
-        btnFlash.imageTintList = ColorStateList.valueOf(tint)
+        val on = mode == CameraController.FLASH_ON
+        btnFlash.setImageResource(if (on) R.drawable.ic_flash_on else R.drawable.ic_flash_off)
+        btnFlash.imageTintList = ColorStateList.valueOf(if (on) accentColor() else Color.WHITE)
     }
 
     private fun resetButtonColors() {
